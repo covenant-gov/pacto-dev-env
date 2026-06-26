@@ -145,3 +145,17 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # Optional debugging sidecar. Attach with:
+  #   docker compose --profile debug up -d --build
+  #   docker compose exec debug bash
+  debug:
+    build:
+      context: ./docker
+      dockerfile: debug.Dockerfile
+    image: pacto-debug:local
+    container_name: pacto-debug
+    profiles:
+      - debug
+    stdin_open: true
+    tty: true

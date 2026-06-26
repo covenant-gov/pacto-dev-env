@@ -65,13 +65,12 @@ The first build compiles Foundry, nostr-rs-relay, Bunker46, and the Aztec wrappe
 # Adds Aztec RPC on http://localhost:8080 and admin API on http://localhost:8880.
 docker compose --profile aztec up -d --build
 
-# For NIP-46 bunker signing tests
-# Adds Bunker46 server on http://127.0.0.1:3001 with Postgres and Redis.
-docker compose --profile bunker up -d --build
-
 # Both can be combined
 docker compose --profile aztec --profile bunker up -d --build
-```
+
+# For interactive network/WebSocket debugging
+# Adds a sidecar container with socat, websocat, curl, jq, nc, psql, redis-cli, etc.
+docker compose --profile debug up -d --build
 
 > Aztec is heavy. Allocate at least 8 GB of RAM to Docker and expect a 2–3 minute startup while it deploys L1 contracts to Anvil.
 
@@ -329,8 +328,7 @@ cargo test
 | Aztec sandbox | `http://localhost:8080` | `aztec-sandbox` | Profile `aztec` |
 | Aztec admin | `http://localhost:8880` | `aztec-sandbox` | Profile `aztec` |
 | NIP-46 bunker | `http://127.0.0.1:3001` | `nip46-bunker` | Profile `bunker` |
-
----
+| Debug sidecar | — | `debug` | Profile `debug`; `docker compose exec debug bash` |
 
 ## Recommended daily workflow
 
@@ -343,6 +341,43 @@ cargo test
 ---
 
 ## Notes and caveats
+
+
+## Debugging
+
+Host-side debugging tools are installed by the setup scripts: `socat`, `websocat`, `jq`, `curl`, and `cast`.
+
+Start the optional debug sidecar to inspect services from inside the container network:
+
+```bash
+docker compose --profile debug up -d --build
+docker compose exec debug bash
+```
+
+Common recipes:
+
+```bash
+# Open a raw WebSocket to the Nostr relay
+websocat ws://nostr-relay:8080
+
+# Send a Nostr REQ filter (paste, then hit Enter twice)
+websocat ws://nostr-relay:8080
+["REQ", "debug-1", {"kinds": [1], "limit": 5}]
+
+# Tap relay traffic between ports
+socat -v TCP-LISTEN:7001,fork TCP:nostr-relay:8080
+
+# Check Anvil RPC from inside the container network
+curl -fsS -X POST -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+  http://anvil:8545 | jq .
+
+# Inspect bunker Postgres
+psql postgresql://bunker46:bunker46@nip46-bunker-db:5432/bunker46
+
+# Inspect bunker Redis
+redis-cli -h nip46-bunker-redis ping
+```
 
 - All images are built locally for the host architecture (arm64 on Apple Silicon, x86_64 on Linux). No `platform: linux/amd64` pinning or Rosetta emulation is required.
 - First `docker compose up --build` will take several minutes because it compiles Foundry, nostr-rs-relay, Bunker46, and the Aztec wrapper from source.

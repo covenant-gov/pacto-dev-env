@@ -41,7 +41,7 @@ install_homebrew() {
 install_base_tools() {
   log "Updating Homebrew and installing base tools..."
   brew update
-  brew install git curl wget jq coreutils pkg-config cmake llvm rustup node pnpm
+  brew install git curl wget jq coreutils pkg-config cmake llvm rustup node pnpm socat websocat
 
   # Docker Desktop must be installed manually or via Homebrew Cask
   if ! command -v docker >/dev/null 2>&1; then
@@ -87,7 +87,11 @@ install_rust() {
   if ! command -v rustc >/dev/null 2>&1; then
     if command -v brew >/dev/null 2>&1; then
       log "Linking rustup wrappers into Homebrew bin..."
-      brew link rustup && export PATH="$(brew --prefix)/bin:$PATH"
+      if brew link rustup; then
+        local brew_prefix
+        brew_prefix="$(brew --prefix)"
+        export PATH="${brew_prefix}/bin:$PATH"
+      fi
     fi
   fi
 
@@ -168,6 +172,9 @@ verify_install() {
   forge --version
   anvil --version
   cast --version
+  jq --version
+  socat -V | head -1
+  websocat --version | head -1
   if command -v aztec-sandbox >/dev/null 2>&1; then
     aztec-sandbox --version
   else

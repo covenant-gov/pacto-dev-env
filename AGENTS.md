@@ -14,14 +14,15 @@ This repository is a **service orchestration layer**, not an application.
 - **Optional Compose profiles** extend the stack:
   - `--profile aztec` adds `aztec-sandbox` (`http://localhost:8080`, admin `http://localhost:8880`); it waits for Anvil to be healthy and deploys rollup contracts to it.
   - `--profile bunker` adds `nip46-bunker` (`http://127.0.0.1:3001`) backed by Postgres and Redis.
+  - `--profile debug` adds `debug`, an interactive sidecar with network/WebSocket inspection tools.
 - **Host setup scripts** install Docker, Rust, Node/pnpm, Foundry, Aztec CLI, and clone the ecosystem repos into `~/src/covenant-gov/`.
 - Sibling application repos (e.g., `pacto-app`, `pacto-gov`) connect to these localhost endpoints during local development.
 
 ## Key Directories
 
 | Directory | Purpose |
-|-----------|---------|
-| `docker/` | Local Dockerfiles for `nostr-relay`, `anvil`, `aztec-sandbox`, and `nip46-bunker`. |
+|---|---|
+| `docker/` | Local Dockerfiles for `nostr-relay`, `anvil`, `aztec-sandbox`, `nip46-bunker`, and `debug`. |
 | `data/` | Runtime data volumes mounted into containers (`data/relay`, `data/aztec`, `data/nip46-bunker-db`). |
 
 ## Development Commands
@@ -79,11 +80,28 @@ docker compose --profile bunker up -d --build
   - Multi-stage Dockerfiles with dedicated runtime images (`debian:bookworm-slim` or `node:24-slim`).
   - Services run as non-root users where applicable (`relay` uid 1000, `bunker` uid 1001).
 - **Compose patterns**
-  - Use profiles (`aztec`, `bunker`) to keep heavy services opt-in.
-  - Healthchecks gate service dependencies (e.g., Aztec waits for Anvil; bunker waits for Postgres and Redis).
-- **Configuration**
-  - `relay-config.toml` is mounted read-only into the relay container.
-  - Bunker secrets are injected via `.env`; default placeholders are insecure and must be overridden.
+  - Use profiles (`aztec`, `bunker`, `debug`) to keep heavy or optional services opt-in.
+  - Healthchecks gate service dependencies (e.g., Aztec waits for Anvil; bunker waits for Postgres and Redis). The `debug` profile has no dependencies and can be started standalone.
+
+### Debugging playbook
+
+When investigating service connectivity or protocol issues, prefer these tools:
+
+- **Host-side (already installed by setup scripts):** `cast`, `curl`, `jq`, `socat`, `websocat`.
+- **Container-side (debug sidecar):** start `docker compose --profile debug up -d --build` and attach with `docker compose exec debug bash`.
+  - `websocat ws://nostr-relay:8080` for raw Nostr WebSocket frames.
+  - `socat -v TCP-LISTEN:7001,fork TCP:nostr-relay:8080` to proxy/tap relay traffic.
+  - `curl -fsS -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' http://anvil:8545 | jq .` for EVM RPC checks.
+  - `psql postgresql://bunker46:bunker46@nip46-bunker-db:5432/bunker46` for bunker database inspection.
+  - `redis-cli -h nip46-bunker-redis ping` for bunker cache checks.
+  - `nc -zv <service> <port>` for quick port-open verification.
+
+---
+
+## Configuration
+
+- `relay-config.toml` is mounted read-only into the relay container.
+- Bunker secrets are injected via `.env`; default placeholders are insecure and must be overridden.
 
 ## Important Files
 
@@ -95,8 +113,8 @@ docker compose --profile bunker up -d --build
 | `setup-ubuntu-lts.sh` | Host setup for Ubuntu LTS (run with `sudo`). |
 | `docker/nostr-relay.Dockerfile` | Builds `nostr-rs-relay` v0.9.0 from source. |
 | `docker/anvil.Dockerfile` | Builds Foundry v1.7.1 (`anvil`, `cast`, `forge`, `chisel`) from source. |
-| `docker/aztec-sandbox.Dockerfile` | Wraps the upstream Aztec arm64 image, adds `curl` for healthchecks. |
 | `docker/nip46-bunker.Dockerfile` | Builds Bunker46 server (no UI) from source with Node 24/pnpm. |
+| `docker/debug.Dockerfile` | Sidecar image with `socat`, `websocat`, `curl`, `jq`, `nc`, `psql`, `redis-cli`. |
 | `README.md` | Quick-start and port reference. |
 | `GETTING_STARTED.md` | Full developer guide with per-project workflows. |
 

@@ -66,6 +66,10 @@ install_system_packages() {
     gnupg
     lsb-release
     software-properties-common
+    # Network debugging tools
+    socat
+    jq
+    netcat-openbsd
     # Tauri / desktop deps
     libvulkan-dev
     libwebkit2gtk-4.1-dev
@@ -108,8 +112,10 @@ install_docker() {
     run_privileged chmod a+r /etc/apt/keyrings/docker.asc
   fi
 
-  local arch="$(dpkg --print-architecture)"
-  local codename="$(lsb_release -cs 2>/dev/null || echo "noble")"
+  local arch
+  arch="$(dpkg --print-architecture)"
+  local codename
+  codename="$(lsb_release -cs 2>/dev/null || echo "noble")"
   local repo_line="deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${codename} stable"
 
   if ! run_privileged grep -Fxq "$repo_line" /etc/apt/sources.list.d/docker.list 2>/dev/null; then
@@ -145,9 +151,32 @@ install_rust() {
 
   rustup default stable >/dev/null 2>&1 || true
   rustup component add rustfmt clippy 2>/dev/null || true
+
   rustup target add x86_64-unknown-linux-gnu 2>/dev/null || true
 
   log "Rust ready: $(rustc --version)"
+}
+
+
+install_websocat() {
+  if command_exists websocat; then
+    log "websocat already installed: $(websocat --version | head -1)"
+    return 0
+  fi
+
+  log "Installing websocat..."
+  local asset
+  case "$(uname -m)" in
+    x86_64) asset="websocat.x86_64-unknown-linux-musl" ;;
+    aarch64|arm64) asset="websocat_max.aarch64-unknown-linux-musl" ;;
+    *) err "Unsupported architecture: $(uname -m)"; return 1 ;;
+  esac
+  local version="1.14.0"
+  local dest="$HOME/.cargo/bin/websocat"
+  mkdir -p "$HOME/.cargo/bin"
+  curl -fsSL "https://github.com/vi/websocat/releases/download/v${version}/${asset}" -o "$dest"
+  chmod +x "$dest"
+  log "websocat installed: $("$dest" --version | head -1)"
 }
 
 # ---------------------------------------------------------------------------
@@ -208,10 +237,16 @@ install_foundry() {
 install_aztec_cli() {
   if command_exists aztec-sandbox; then
     log "Aztec sandbox version manager already installed: $(aztec-sandbox --version 2>/dev/null || echo 'unknown version')"
-  else
-    log "Installing Aztec sandbox version manager..."
-    /bin/bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/AztecProtocol/sandbox-version-manager/master/install.sh')" || warn "Aztec sandbox version manager install failed; continuing."
+    return 0
   fi
+
+  if [[ "${PACTO_SKIP_AZTEC_CLI:-}" == "1" ]]; then
+    log "Skipping Aztec sandbox version manager install (PACTO_SKIP_AZTEC_CLI=1)."
+    return 0
+  fi
+
+  log "Installing Aztec sandbox version manager..."
+  /bin/bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/AztecProtocol/sandbox-version-manager/master/install.sh')" || warn "Aztec sandbox version manager install failed; continuing."
 }
 
 # ---------------------------------------------------------------------------
@@ -281,9 +316,13 @@ clone_repos() {
 
   # If no directory was supplied as an argument, ask the user.
   if [[ -z "$base_dir" ]]; then
-    echo
-    read -r -p "Where should the Pacto ecosystem repos be cloned? [${HOME}/src/covenant-gov]: " base_dir
-    base_dir="${base_dir:-$HOME/src/covenant-gov}"
+    if [[ "${PACTO_CLONE_REPOS:-}" == "skip" ]]; then
+      base_dir="$HOME/src/covenant-gov"
+    else
+      echo
+      read -r -p "Where should the Pacto ecosystem repos be cloned? [${HOME}/src/covenant-gov]: " base_dir
+      base_dir="${base_dir:-$HOME/src/covenant-gov}"
+    fi
   fi
 
   # Expand ~ and resolve to absolute path for display.
@@ -320,8 +359,14 @@ clone_repos() {
   done
   echo
 
-  read -r -p "Selection [1]: " selection
-  selection="${selection:-1}"
+  # Respect a non-interactive CI default: if PACTO_CLONE_REPOS=skip, skip cloning.
+  local selection
+  if [[ "${PACTO_CLONE_REPOS:-}" == "skip" ]]; then
+    selection="none"
+  else
+    read -r -p "Selection [1]: " selection
+    selection="${selection:-1}"
+  fi
 
   # Handle special keywords.
   if [[ "$selection" =~ ^[[:space:]]*all[[:space:]]*$ ]]; then
@@ -356,8 +401,15 @@ clone_repos() {
     done
   fi
 
-  read -r -p "Continue? [Y/n]: " confirm
-  confirm="${confirm:-Y}"
+  # Respect a non-interactive CI default: auto-confirm if PACTO_CLONE_REPOS is set.
+  local confirm
+  if [[ -n "${PACTO_CLONE_REPOS:-}" ]]; then
+    confirm="Y"
+  else
+    read -r -p "Continue? [Y/n]: " confirm
+    confirm="${confirm:-Y}"
+  fi
+
   if [[ ! "$confirm" =~ ^[Yy] ]]; then
     warn "Clone step cancelled by user."
     return 0
@@ -384,6 +436,32 @@ clone_repos() {
 # Main
 # ---------------------------------------------------------------------------
 
+verify_install() {
+  log "Verifying installed tools..."
+
+  # Cargo/Foundry/Aztec may not be on PATH until a new shell; force them for this function.
+  export PATH="$HOME/.cargo/bin:$HOME/.foundry/bin:$HOME/.aztec/bin:$PATH"
+
+  docker --version
+  docker compose version
+  rustc --version
+  cargo --version
+  node --version
+  pnpm --version
+  forge --version
+  anvil --version
+  cast --version
+  jq --version
+  socat -V | head -1
+  websocat --version | head -1
+  if command_exists aztec-sandbox; then
+    aztec-sandbox --version
+  else
+    warn "aztec-sandbox binary not on PATH yet — open a new shell."
+  fi
+}
+
+
 main() {
 
   if [[ "$EUID" -eq 0 ]] && [[ -z "${SUDO_USER:-}" ]]; then
@@ -400,6 +478,7 @@ main() {
   install_system_packages
   install_docker
   install_rust
+  install_websocat
   install_node
   install_pnpm
   install_foundry
