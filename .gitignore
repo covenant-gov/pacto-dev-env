@@ -1,0 +1,16 @@
+# Skills package manager
+node_modules/
+
+# Runtime data
+data/
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.vscode/settings.json
+.idea/
+
+# Local env files
+.env
+.env.local
