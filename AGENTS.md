@@ -118,6 +118,42 @@ When investigating service connectivity or protocol issues, prefer these tools:
 | `README.md` | Quick-start and port reference. |
 | `GETTING_STARTED.md` | Full developer guide with per-project workflows. |
 
+## Agent Skills
+
+This repository ships agent skills from [skills.sh](https://skills.sh/) to help Claude Code, Cursor, and Oh My Pi write idiomatic, well-tested Rust code and keep feedback loops tight. Skills are installed under:
+
+- `.claude/skills/` — Claude Code
+- `.agents/skills/` — Cursor and OMP's `agents` provider
+- `.omp/skills/` — Oh My Pi native provider
+
+Installed skills (see `skills-lock.json`):
+
+| Skill | Source | Purpose |
+|---|---|---|
+| `rust-best-practices` | `apollographql/skills` | Idiomatic Rust, ownership, error handling, performance, linting |
+| `rust-async-patterns` | `wshobson/agents` | Tokio, async traits, concurrency, and async debugging |
+| `rust-testing` | `affaan-m/everything-claude-code` | Unit, integration, async, property-based, and snapshot testing |
+| `rust-patterns` | `affaan-m/everything-claude-code` | Common Rust design patterns |
+| `m15-anti-pattern` | `zhanghandong/rust-skills` | Anti-patterns and code-smell detection |
+| `cargo-fuzz` | `trailofbits/skills` | Fuzzing with `cargo-fuzz` and `libFuzzer` |
+| `cargo-nextest` | `laurigates/claude-plugins` | Fast, structured test runs with `cargo nextest` |
+| `code-reviewer` | `google-gemini/gemini-cli` | Structured code-review methodology |
+
+To add or update a skill:
+
+```bash
+# Install a new skill for all three harnesses
+npx skills add <owner/repo@skill> -a claude-code -a cursor -a pi -y --copy
+
+# Copy the new skill into the OMP-native directory
+rsync -a .agents/skills/<skill-name>/ .omp/skills/<skill-name>/
+
+# Update all installed skills
+npx skills update -y
+```
+
+Security note: `cargo-fuzz` and `code-reviewer` are flagged as higher-risk by the skills.sh scanner because they invoke compilers/fuzzers and review arbitrary code. They come from reputable sources (Trail of Bits, Google Gemini) and are safe for this repository, but review skill contents before installing updates.
+
 ## Runtime/Tooling Preferences
 
 - **Container runtime**: Docker Engine + Docker Compose plugin.
