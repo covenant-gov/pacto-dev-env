@@ -48,8 +48,8 @@ jobs:
 
     steps:
       - name: Checkout repository
-        # v6
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Set up QEMU
         # v3
@@ -62,6 +62,10 @@ jobs:
       - name: Log in to Container Registry
         # v3
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
         # v5
@@ -92,8 +96,8 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
       - name: Generate build attestation
-        # v1
-        uses: actions/attest-build-provenance@92c65d2898f1f53cfdc910b962cecff86e7f8fcc
+        # v2
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
           subject-digest: ${{ steps.build.outputs.digest }}
