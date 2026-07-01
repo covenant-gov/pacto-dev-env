@@ -1,10 +1,11 @@
 # Pacto wrapper around the official multi-arch Aztec CLI image.
 # The upstream image's default entrypoint runs a node script directly, which
 # complicates Compose commands. This wrapper:
-# - Keeps the upstream arm64 binary layer intact
+# - Keeps the upstream multi-arch layer intact
 # - Adds curl (for healthchecks)
 # - Uses a stable ENTRYPOINT so Compose can append subcommands naturally
-FROM aztecprotocol/aztec:5.0.0-nightly.20260625-arm64
+ARG AZTEC_IMAGE=aztecprotocol/aztec:5.0.0-nightly.20260625
+FROM ${AZTEC_IMAGE}
 
 # Silence the harmless x86_64 tcmalloc LD_PRELOAD warning on arm64
 ENV LD_PRELOAD=""
