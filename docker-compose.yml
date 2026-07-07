@@ -78,8 +78,8 @@ services:
     restart: on-failure
 
   # One-shot governance contract seeder for local Anvil. Mounts the sibling
-  # pacto-gov repository read-only and writes deployment artifacts to a host
-  # directory so other services can read the deployed addresses.
+  # pacto-gov repository and writes deployment artifacts to a host directory so
+  # other services can read the deployed addresses.
   seed:
     image: pacto-anvil:local
     profiles:
@@ -97,7 +97,7 @@ services:
       FOUNDRY_CACHE_PATH: /tmp/pacto-gov-cache
       FOUNDRY_BROADCAST: /tmp/pacto-gov-broadcast
     volumes:
-      - ${PACTO_GOV_DIR:-../pacto-gov}:/pacto-gov:ro
+      - ${PACTO_GOV_DIR:-../pacto-gov}:/pacto-gov
       - ./data/deployments:/pacto-gov/deployments
       - ./data/cache:/tmp/pacto-gov-cache
       - ./data/out:/tmp/pacto-gov-out

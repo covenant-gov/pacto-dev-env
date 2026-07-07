@@ -128,13 +128,11 @@ make seed
 # docker compose --profile seed run --rm seed
 ```
 
-Requirements:
-
-* The `pacto-gov` repository must be present at `../pacto-gov` (configurable
-  with `PACTO_GOV_DIR` in your environment) and its Node dependencies must be
-  installed (`cd ../pacto-gov && pnpm install`) so Forge can resolve imports.
-* Anvil must be running or reachable; the `seed` service depends on Anvil
-  being healthy and will start it automatically if needed.
+`make seed` and `make up-all` automatically ensure the `pacto-gov` sibling
+repository is present at `../pacto-gov` (configurable with `PACTO_GOV_DIR` in
+your environment) and that its Node dependencies are installed. If either is
+missing, you will be prompted to clone or install; use `YES=1` to proceed
+automatically without prompting (e.g. `make up-all YES=1`).
 
 After the deployment finishes, the full-system artifact is available at:
 

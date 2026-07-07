@@ -58,10 +58,12 @@ chmod 600 pacto-bot-api.toml
 # pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000 >> pacto-bot-api.toml
 
 make up          # default stack: relay + anvil + pacto-bot-api
-make up-all      # default stack + aztec + bunker
+make up-all      # default stack + aztec + bunker + seed
 ```
 
 `make up` is equivalent to `docker compose up -d --build`. The `nostr-relay` image is pulled from GHCR; `anvil` is built locally on first run because its GHCR image is not yet available.
+
+`make up-all` and `make seed` automatically run `scripts/ensure-sibling-repos.sh`, which checks for the sibling `pacto-gov` repository and its Node dependencies. If either is missing, the script interactively offers to clone the repo and run `pnpm install`. In non-interactive environments, use `make up-all YES=1` to allow automatic cloning and installation.
 
 ### Optional profiles
 
@@ -127,6 +129,8 @@ When investigating service connectivity or protocol issues, prefer these tools:
 | `docker/anvil.Dockerfile` | Builds Foundry v1.7.1 (`anvil`, `cast`, `forge`, `chisel`) from source; used by the default stack. |
 | `docker/nip46-bunker.Dockerfile` | Local fallback build for Bunker46 server (no UI) with Node 24/pnpm. |
 | `docker/debug.Dockerfile` | Sidecar image with `socat`, `websocat`, `curl`, `jq`, `nc`, `psql`, `redis-cli`. |
+| `scripts/ensure-sibling-repos.sh` | Ensures the sibling `pacto-gov` repo and its dependencies are present before seeding. |
+| `scripts/seed-anvil.sh` | One-shot deploy of Pacto governance contracts to Anvil. |
 | `pacto-bot-api.toml.example` | Template for the daemon config; copy to `pacto-bot-api.toml` and add bot identities. |
 | `pacto-bot-api.toml` | Generated daemon config with signing material; **never commit**. |
 | `ARCHITECTURE.md` | Unified architecture, operations, and connection guide for this repository. |

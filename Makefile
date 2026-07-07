@@ -6,7 +6,7 @@
 # Generate real bunker secrets in `.env` before using the `bunker` or `full`
 # profiles. See `.env.example` for the template.
 
-.PHONY: help up up-all down seed pull build-anvil reset logs check config
+.PHONY: help up up-all down seed pull build-anvil reset logs check config ensure-sibling-repos
 
 help: ## Show this help message and all available targets
 	@awk 'BEGIN {FS = ":.*?##"; printf "\nPacto local development environment commands:\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -14,10 +14,13 @@ help: ## Show this help message and all available targets
 up: config ## Start the default stack (nostr-relay + anvil + pacto-bot-api)
 	docker compose up -d --build
 
-up-all: config ## Start the full stack (default + aztec + bunker + seed)
+ensure-sibling-repos: ## Ensure required sibling repositories (e.g. pacto-gov) are cloned
+	@./scripts/ensure-sibling-repos.sh $(if $(YES),--yes)
+
+up-all: config ensure-sibling-repos ## Start the full stack (default + aztec + bunker + seed)
 	docker compose --profile full up -d --build
 
-seed: ## Deploy Pacto governance contracts to Anvil (one-shot)
+seed: ensure-sibling-repos ## Deploy Pacto governance contracts to Anvil (one-shot)
 	docker compose --profile seed run --rm seed
 
 down: ## Stop all services and remove containers for all profiles
