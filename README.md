@@ -48,31 +48,52 @@ Both scripts are idempotent — re-running skips already-installed tools. The Ub
 
 ```bash
 cd pacto-dev-env
-docker compose up -d --build
+make up          # or: docker compose up -d --build
+make up-all      # everything including bunker and aztec
 ```
 
-This builds native arm64/amd64 images from `docker/` and starts:
+`make up` starts the default stack:
 
 - Nostr relay on `ws://localhost:7000`
 - Anvil EVM testnet on `http://localhost:8545`
 
-The first build compiles Foundry, nostr-rs-relay, Bunker46, and the Aztec wrapper from source, so expect several minutes.
+The `nostr-relay`, `aztec-sandbox`, and `nip46-bunker` services are pulled from prebuilt GHCR images. `anvil` is built locally from `docker/anvil.Dockerfile` because the GHCR image is not yet public, so the first run may take a few minutes while Foundry compiles.
+
+`make up-all` is equivalent to `docker compose --profile full up -d --build`; it starts the default stack plus the Aztec sandbox and the NIP-46 bunker.
+
+> Aztec is heavy. Allocate at least 8 GB of RAM to Docker and expect a 2–3 minute startup while it deploys L1 contracts to Anvil.
 
 ### Optional profiles
 
+| Profile | Services added |
+|---|---|
+| `aztec` | `aztec-sandbox` on `http://localhost:8080` (admin `http://localhost:8880`) |
+| `bunker` | `nip46-bunker` on `http://127.0.0.1:3001` |
+| `full` | `aztec` + `bunker` |
+| `debug` | Interactive sidecar with `socat`, `websocat`, `curl`, `jq`, `nc`, `psql`, `redis-cli` |
+
 ```bash
-# For pacto-aztec work
-# Adds Aztec RPC on http://localhost:8080 and admin API on http://localhost:8880.
+# Aztec sandbox
 docker compose --profile aztec up -d --build
 
-# Both can be combined
-docker compose --profile aztec --profile bunker up -d --build
+# NIP-46 bunker
+docker compose --profile bunker up -d --build
 
-# For interactive network/WebSocket debugging
-# Adds a sidecar container with socat, websocat, curl, jq, nc, psql, redis-cli, etc.
+# Everything optional together
+docker compose --profile full up -d --build
+
+# Debug sidecar
 docker compose --profile debug up -d --build
+```
 
-> Aztec is heavy. Allocate at least 8 GB of RAM to Docker and expect a 2–3 minute startup while it deploys L1 contracts to Anvil.
+Before using `bunker` or `full`, generate real secrets in `.env`. Copy `.env.example` and override the placeholder values:
+
+```bash
+cp .env.example .env
+# edit .env with secure values
+```
+
+`make pull` fetches the latest prebuilt GHCR images without restarting anything.
 
 ### Verify the default stack
 
@@ -81,6 +102,30 @@ export PATH="$HOME/.foundry/bin:$PATH"
 cast block-number --rpc-url http://localhost:8545
 curl -s http://localhost:7000 | head -5
 ```
+
+### Shared network
+
+`docker-compose.yml` declares a bridge network named `pacto`. Sibling application composes can attach to it as an external network so their containers reach the dev-env services by Docker service name instead of duplicating them:
+
+```yaml
+services:
+  my-app:
+    networks:
+      - pacto
+
+networks:
+  pacto:
+    external: true
+```
+
+Inside an attached container, use service names rather than `localhost`:
+
+- `http://anvil:8545` for the EVM RPC
+- `ws://nostr-relay:8080` for the Nostr relay
+- `http://aztec-sandbox:8080` for Aztec RPC
+- `http://nip46-bunker:3000` for the NIP-46 bunker
+
+> Host-facing ports are bound to `127.0.0.1` by default, so services are only reachable from the local machine unless you explicitly change the bind address.
 
 ---
 
@@ -218,7 +263,7 @@ All workflows assume the default Docker services are running:
 
 ```bash
 cd pacto-dev-env
-docker compose up -d --build
+make up
 ```
 
 ### Build and run `pacto-app`
@@ -239,7 +284,7 @@ pnpm dev
 
 #### Connect `pacto-app` to the local EVM chain
 
-1. Start the dev services: `cd pacto-dev-env && docker compose up -d --build`.
+1. Start the dev services: `cd pacto-dev-env && make up`.
 2. In `pacto-app`, open **Settings → Wallet / Network**.
 3. Add a custom EVM network:
    - Name: `Pacto Local`
@@ -294,7 +339,7 @@ Start the Aztec profile:
 
 ```bash
 cd pacto-dev-env
-docker compose --profile aztec up -d --build
+make up-all          # or: docker compose --profile aztec up -d --build
 ```
 
 Then follow the Aztec project's own README:
@@ -323,17 +368,17 @@ cargo test
 
 | Service | URL | Docker service | Notes |
 |---------|-----|----------------|-------|
-| Nostr relay | `ws://localhost:7000` | `nostr-relay` | Default stack |
-| Anvil EVM | `http://localhost:8545` | `anvil` | Chain ID 31337 |
-| Aztec sandbox | `http://localhost:8080` | `aztec-sandbox` | Profile `aztec` |
-| Aztec admin | `http://localhost:8880` | `aztec-sandbox` | Profile `aztec` |
-| NIP-46 bunker | `http://127.0.0.1:3001` | `nip46-bunker` | Profile `bunker` |
+| Nostr relay | `ws://localhost:7000` | `nostr-relay` | Default stack; binds to `127.0.0.1` |
+| Anvil EVM | `http://localhost:8545` | `anvil` | Chain ID 31337; binds to `127.0.0.1` |
+| Aztec sandbox | `http://localhost:8080` | `aztec-sandbox` | Profile `aztec`; binds to `127.0.0.1` |
+| Aztec admin | `http://localhost:8880` | `aztec-sandbox` | Profile `aztec`; binds to `127.0.0.1` |
+| NIP-46 bunker | `http://127.0.0.1:3001` | `nip46-bunker` | Profile `bunker`; binds to `127.0.0.1` |
 | Debug sidecar | — | `debug` | Profile `debug`; `docker compose exec debug bash` |
 
 ## Recommended daily workflow
 
-1. Start Docker services: `cd pacto-dev-env && docker compose up -d --build`.
-2. If working on Aztec, add the profile: `docker compose --profile aztec up -d --build`.
+1. Start Docker services: `cd pacto-dev-env && make up`.
+2. If working on Aztec, use `make up-all` or run `docker compose --profile aztec up -d --build`.
 3. In one terminal, run `pacto-app`: `cd pacto-app && pnpm run tauri:dev`.
 4. In another terminal, deploy governance contracts to Anvil and copy addresses into the app's network config.
 5. Iterate. Re-run `cargo test`, `forge test`, or `pnpm test` as appropriate.
@@ -379,8 +424,8 @@ psql postgresql://bunker46:bunker46@nip46-bunker-db:5432/bunker46
 redis-cli -h nip46-bunker-redis ping
 ```
 
-- All images are built locally for the host architecture (arm64 on Apple Silicon, x86_64 on Linux). No `platform: linux/amd64` pinning or Rosetta emulation is required.
-- First `docker compose up --build` will take several minutes because it compiles Foundry, nostr-rs-relay, Bunker46, and the Aztec wrapper from source.
+- The `anvil` image is built locally for the host architecture (arm64 on Apple Silicon, x86_64 on Linux) because the GHCR image is not yet public. The `nostr-relay`, `aztec-sandbox`, and `nip46-bunker` images are pulled from GHCR. No `platform: linux/amd64` pinning or Rosetta emulation is required.
+- First `make up` will take a few minutes while `anvil` is built from source. Subsequent starts use the cached `pacto-anvil:local` image.
 - If Anvil emulation is too slow on an M4 Mac, run `anvil` natively via `foundryup` instead and stop the `anvil` container.
 - Aztec's sandbox is the heaviest service. Do not start it unless you are actively working on `pacto-aztec`.
 - Private keys should never be committed. The `nsec` signing backend is for local testing only.
