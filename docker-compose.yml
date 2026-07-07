@@ -38,6 +38,12 @@ services:
     depends_on:
       nostr-relay:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   # Pacto bot API daemon. Generate `pacto-bot-api.toml` with

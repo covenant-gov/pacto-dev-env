@@ -6,13 +6,13 @@
 # Generate real bunker secrets in `.env` before using the `bunker` or `full`
 # profiles. See `.env.example` for the template.
 
-.PHONY: up up-all down seed pull build-anvil reset logs check config help
-
-up: config ## Start the default stack (nostr-relay + anvil + pacto-bot-api)
-	docker compose up -d --build
+.PHONY: help up up-all down seed pull build-anvil reset logs check config
 
 help: ## Show this help message and all available targets
 	@awk 'BEGIN {FS = ":.*?##"; printf "\nPacto local development environment commands:\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
+up: config ## Start the default stack (nostr-relay + anvil + pacto-bot-api)
+	docker compose up -d --build
 
 up-all: config ## Start the full stack (default + aztec + bunker + seed)
 	docker compose --profile full up -d --build
