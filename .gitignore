@@ -1,0 +1,8 @@
+.env
+pacto-bot-api.toml
+data/
+
+# Seed deployment artifacts and build cache are produced locally; never commit
+# generated state.
+data/deployments/
+data/cache/

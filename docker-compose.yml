@@ -1,25 +1,96 @@
 services:
   # Nostr relay for local DM / MLS testing
   nostr-relay:
-    build:
-      context: ./docker
-      dockerfile: nostr-relay.Dockerfile
-    image: pacto-nostr-relay:local
-    container_name: pacto-nostr-relay
+    image: ghcr.io/covenant-gov/pacto-dev-env/nostr-relay:main
     ports:
-      - "7000:8080"
+      - "127.0.0.1:7000:8080"
     volumes:
       - ./relay-config.toml:/usr/src/app/config.toml:ro
       - ./data/relay:/usr/src/app/db
+    networks:
+      - pacto
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          perl -MIO::Socket::INET -e 'my $$s = IO::Socket::INET->new(PeerAddr=>"localhost:8080", Timeout=>5); exit($$s ? 0 : 1)'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
-  # Local EVM testnet for pacto-gov / sponsor / security-manager contracts
+  # Pacto bot API daemon. Generate `pacto-bot-api.toml` with
+  # `pacto-bot-admin` first; see `pacto-bot-api.toml.example`.
+  pacto-bot-api:
+    image: ghcr.io/covenant-gov/pacto-bot-api:latest
+    environment:
+      PACTO_DATA_DIR: /var/lib/pacto-bot-api
+      PACTO_RELAY_URL: ws://nostr-relay:8080
+    command:
+      - pacto-bot-api
+      - --config
+      - /etc/pacto/pacto-bot-api.toml
+      - --data-dir
+      - /var/lib/pacto-bot-api
+    volumes:
+      - pacto-bot-api-data:/var/lib/pacto-bot-api
+      - ./pacto-bot-api.toml:/etc/pacto/pacto-bot-api.toml:ro
+    networks:
+      - pacto
+    depends_on:
+      nostr-relay:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /var/lib/pacto-bot-api/pacto-bot-api.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: on-failure
+
+  # One-shot governance contract seeder for local Anvil. Mounts the sibling
+  # pacto-gov repository read-only and writes deployment artifacts to a host
+  # directory so other services can read the deployed addresses.
+  seed:
+    image: pacto-anvil:local
+    profiles:
+      - seed
+      - full
+    depends_on:
+      anvil:
+        condition: service_healthy
+    environment:
+      PACTO_GOV_DIR: /pacto-gov
+      ANVIL_RPC_URL: http://anvil:8545
+      ANVIL_PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+      FORCE_SEED: "${FORCE_SEED:-0}"
+      FOUNDRY_OUT: /tmp/pacto-gov-out
+      FOUNDRY_CACHE_PATH: /tmp/pacto-gov-cache
+      FOUNDRY_BROADCAST: /tmp/pacto-gov-broadcast
+    volumes:
+      - ${PACTO_GOV_DIR:-../pacto-gov}:/pacto-gov:ro
+      - ./data/deployments:/pacto-gov/deployments
+      - ./data/cache:/tmp/pacto-gov-cache
+      - ./data/out:/tmp/pacto-gov-out
+      - ./scripts/seed-anvil.sh:/usr/local/bin/seed-anvil.sh:ro
+    working_dir: /pacto-gov
+    command:
+      - /usr/local/bin/seed-anvil.sh
+    entrypoint:
+      - /bin/bash
+    networks:
+      - pacto
+    restart: "no"
+
+  # Local EVM testnet for pacto-gov / sponsor / security-manager contracts.
+  # Anvil is built locally because the GHCR image is not yet available; the
+  # other services use published images. See the Makefile for convenience targets.
   anvil:
     build:
       context: ./docker
       dockerfile: anvil.Dockerfile
     image: pacto-anvil:local
-    container_name: pacto-anvil
     command:
       - "--block-time"
       - "2"
@@ -28,7 +99,9 @@ services:
       - "--port"
       - "8545"
     ports:
-      - "8545:8545"
+      - "127.0.0.1:8545:8545"
+    networks:
+      - pacto
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "cast", "block-number", "--rpc-url", "http://localhost:8545"]
@@ -37,16 +110,13 @@ services:
       retries: 5
       start_period: 10s
 
-  # Aztec local network. Commented out by default: it needs ~8 GB RAM and
-  # an L1 RPC URL. Uncomment when working on pacto-aztec.
+  # Aztec local network. Opt-in via `--profile aztec` or `--profile full`:
+  # it needs ~8 GB RAM and an L1 RPC URL.
   aztec-sandbox:
-    build:
-      context: ./docker
-      dockerfile: aztec-sandbox.Dockerfile
-    image: pacto-aztec:local
-    container_name: pacto-aztec-sandbox
+    image: ghcr.io/covenant-gov/pacto-dev-env/aztec-sandbox:main
     profiles:
       - aztec
+      - full
     command:
       - "start"
       - "--local-network"
@@ -59,10 +129,12 @@ services:
       - "--l1-rpc-urls"
       - "http://anvil:8545"
     ports:
-      - "8080:8080"
-      - "8880:8880"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8880:8880"
     volumes:
       - ./data/aztec:/var/lib/aztec
+    networks:
+      - pacto
     depends_on:
       anvil:
         condition: service_healthy
@@ -74,16 +146,13 @@ services:
       retries: 10
       start_period: 90s
 
-  # NIP-46 bunker (Bunker46 server only). Commented out by default:
-  # uncomment and generate secrets in dev-setup/.env when you need bunker signing tests.
+  # NIP-46 bunker (Bunker46 server only). Opt-in via `--profile bunker` or
+  # `--profile full`: generate real secrets in `.env` first.
   nip46-bunker:
-    build:
-      context: ./docker
-      dockerfile: nip46-bunker.Dockerfile
-    image: pacto-nip46-bunker:local
-    container_name: pacto-nip46-bunker
+    image: ghcr.io/covenant-gov/pacto-dev-env/nip46-bunker:main
     profiles:
       - bunker
+      - full
     ports:
       - "127.0.0.1:3001:3000"
     environment:
@@ -99,12 +168,11 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
       COOKIE_SECURE: ${COOKIE_SECURE:-}
       REDIS_URL: redis://nip46-bunker-redis:6379
-      WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Bunker46}
-      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
-      WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:-http://localhost:8080}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-false}
       NOSTR_DEFAULT_RELAYS: ${NOSTR_DEFAULT_RELAYS:-}
+    networks:
+      - pacto
     depends_on:
       nip46-bunker-db:
         condition: service_healthy
@@ -120,15 +188,17 @@ services:
 
   nip46-bunker-db:
     image: postgres:17-alpine
-    container_name: pacto-nip46-bunker-db
     profiles:
       - bunker
+      - full
     environment:
       POSTGRES_USER: bunker46
       POSTGRES_PASSWORD: bunker46
       POSTGRES_DB: bunker46
     volumes:
       - ./data/nip46-bunker-db:/var/lib/postgresql/data
+    networks:
+      - pacto
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bunker46"]
       interval: 5s
@@ -137,9 +207,11 @@ services:
 
   nip46-bunker-redis:
     image: redis:8-alpine
-    container_name: pacto-nip46-bunker-redis
     profiles:
       - bunker
+      - full
+    networks:
+      - pacto
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -154,8 +226,17 @@ services:
       context: ./docker
       dockerfile: debug.Dockerfile
     image: pacto-debug:local
-    container_name: pacto-debug
     profiles:
       - debug
+    networks:
+      - pacto
     stdin_open: true
     tty: true
+
+networks:
+  pacto:
+    name: pacto
+    driver: bridge
+
+volumes:
+  pacto-bot-api-data:

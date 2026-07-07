@@ -8,21 +8,25 @@
 
 This repository is a **service orchestration layer**, not an application.
 
-- **Default stack** starts two services:
+- **Default stack** starts three services:
   - `nostr-relay` on `ws://localhost:7000`
   - `anvil` EVM testnet on `http://localhost:8545` (chain 31337)
+  - `pacto-bot-api` daemon on a Unix socket inside the `pacto-bot-api-data` volume
 - **Optional Compose profiles** extend the stack:
   - `--profile aztec` adds `aztec-sandbox` (`http://localhost:8080`, admin `http://localhost:8880`); it waits for Anvil to be healthy and deploys rollup contracts to it.
   - `--profile bunker` adds `nip46-bunker` (`http://127.0.0.1:3001`) backed by Postgres and Redis.
+  - `--profile seed` runs a one-shot deploy of the Pacto governance contracts to Anvil and writes artifacts to `./data/deployments/31337/`.
+  - `--profile full` adds `aztec-sandbox`, `nip46-bunker`, and the `seed` governance seeder.
   - `--profile debug` adds `debug`, an interactive sidecar with network/WebSocket inspection tools.
 - **Host setup scripts** install Docker, Rust, Node/pnpm, Foundry, Aztec CLI, and clone the ecosystem repos into `~/src/covenant-gov/`.
-- Sibling application repos (e.g., `pacto-app`, `pacto-gov`) connect to these localhost endpoints during local development.
+- `docker-compose.yml` creates a shared `pacto` network. Sibling application composes should attach to it as `external: true` rather than duplicating these services.
+- Sibling application repos (e.g., `pacto-app`, `pacto-gov`) connect to these localhost endpoints (or to the `pacto` Docker network from inside containers) during local development.
 
 ## Key Directories
 
 | Directory | Purpose |
 |---|---|
-| `docker/` | Local Dockerfiles for `nostr-relay`, `anvil`, `aztec-sandbox`, `nip46-bunker`, and `debug`. |
+| `docker/` | Local Dockerfiles for `anvil` (built locally) and `debug`; prebuilt GHCR images are used for `nostr-relay`, `aztec-sandbox`, and `nip46-bunker`. |
 | `data/` | Runtime data volumes mounted into containers (`data/relay`, `data/aztec`, `data/nip46-bunker-db`). |
 
 ## Development Commands
@@ -45,10 +49,19 @@ Both default to cloning repos into `~/src/covenant-gov/`. After running, open a 
 
 ### Start local services
 
+Generate `pacto-bot-api.toml` from the example (the real file must be kept secret and is ignored by Git), then start the stack:
+
 ```bash
-mkdir -p data/relay
-docker compose up -d --build
+cp pacto-bot-api.toml.example pacto-bot-api.toml
+chmod 600 pacto-bot-api.toml
+# Add bot identities with `pacto-bot-admin`, e.g.:
+# pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000 >> pacto-bot-api.toml
+
+make up          # default stack: relay + anvil + pacto-bot-api
+make up-all      # default stack + aztec + bunker
 ```
+
+`make up` is equivalent to `docker compose up -d --build`. The `nostr-relay` image is pulled from GHCR; `anvil` is built locally on first run because its GHCR image is not yet available.
 
 ### Optional profiles
 
@@ -61,11 +74,8 @@ docker compose --profile aztec up -d --build
 NIP-46 bunker (generate real secrets first):
 
 ```bash
-cat > .env <<EOF
-JWT_SECRET=$(openssl rand -base64 48)
-JWT_REFRESH_SECRET=$(openssl rand -base64 48)
-ENCRYPTION_KEY=$(openssl rand -base64 48)
-EOF
+cp .env.example .env
+# edit .env with secure secrets
 docker compose --profile bunker up -d --build
 ```
 
@@ -80,8 +90,10 @@ docker compose --profile bunker up -d --build
   - Multi-stage Dockerfiles with dedicated runtime images (`debian:bookworm-slim` or `node:24-slim`).
   - Services run as non-root users where applicable (`relay` uid 1000, `bunker` uid 1001).
 - **Compose patterns**
-  - Use profiles (`aztec`, `bunker`, `debug`) to keep heavy or optional services opt-in.
+  - Use profiles (`aztec`, `bunker`, `full`, `debug`) to keep heavy or optional services opt-in.
+  - The default stack is `nostr-relay` + `anvil`; `relay` is no longer a profile.
   - Healthchecks gate service dependencies (e.g., Aztec waits for Anvil; bunker waits for Postgres and Redis). The `debug` profile has no dependencies and can be started standalone.
+  - The shared `pacto` network lets sibling app composes reach services by service name instead of duplicating them.
 
 ### Debugging playbook
 
@@ -111,12 +123,14 @@ When investigating service connectivity or protocol issues, prefer these tools:
 | `relay-config.toml` | Nostr relay runtime config (SQLite, allow-listed event kinds). |
 | `setup-macos-arm64.sh` | Host setup for Apple Silicon. |
 | `setup-ubuntu-lts.sh` | Host setup for Ubuntu LTS (run with `sudo`). |
-| `docker/nostr-relay.Dockerfile` | Builds `nostr-rs-relay` v0.9.0 from source. |
-| `docker/anvil.Dockerfile` | Builds Foundry v1.7.1 (`anvil`, `cast`, `forge`, `chisel`) from source. |
-| `docker/nip46-bunker.Dockerfile` | Builds Bunker46 server (no UI) from source with Node 24/pnpm. |
+| `docker/nostr-relay.Dockerfile` | Local fallback build for `nostr-rs-relay` v0.9.0 from source. |
+| `docker/anvil.Dockerfile` | Builds Foundry v1.7.1 (`anvil`, `cast`, `forge`, `chisel`) from source; used by the default stack. |
+| `docker/nip46-bunker.Dockerfile` | Local fallback build for Bunker46 server (no UI) with Node 24/pnpm. |
 | `docker/debug.Dockerfile` | Sidecar image with `socat`, `websocat`, `curl`, `jq`, `nc`, `psql`, `redis-cli`. |
-| `README.md` | Quick-start and port reference. |
-| `GETTING_STARTED.md` | Full developer guide with per-project workflows. |
+| `pacto-bot-api.toml.example` | Template for the daemon config; copy to `pacto-bot-api.toml` and add bot identities. |
+| `pacto-bot-api.toml` | Generated daemon config with signing material; **never commit**. |
+| `ARCHITECTURE.md` | Unified architecture, operations, and connection guide for this repository. |
+| `README.md` | Quick-start and full developer guide with per-project workflows. |
 
 ## Runtime/Tooling Preferences
 
