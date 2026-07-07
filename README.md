@@ -175,6 +175,8 @@ Run the automated health check:
 make check
 ```
 
+![Self-documenting Make targets and healthy stack output](docs/assets/make-help-check.png)
+
 Or check each service manually:
 
 ```bash
