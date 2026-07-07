@@ -90,7 +90,7 @@ check_caddy() {
   fi
 
   if command -v websocat >/dev/null 2>&1; then
-    if websocat -k -1 wss://localhost:7001 </dev/null >/dev/null 2>&1; then
+    if printf '[]\n' | websocat -k -1 wss://localhost:7001 2>/dev/null | cat >/dev/null; then
       pass "caddy TLS sidecar responds on wss://localhost:7001"
     else
       fail "caddy TLS sidecar is not responding on wss://localhost:7001"

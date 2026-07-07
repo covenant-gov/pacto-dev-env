@@ -189,7 +189,7 @@ Or check each service manually:
 export PATH="$HOME/.foundry/bin:$PATH"
 cast block-number --rpc-url http://localhost:8545
 curl -s http://localhost:7000 | head -5
-websocat -k wss://localhost:7001 -1
+printf '[]\n' | websocat -k -1 wss://localhost:7001
 docker compose exec pacto-bot-api test -S /var/lib/pacto-bot-api/pacto-bot-api.sock && echo "daemon socket ready"
 ```
 
