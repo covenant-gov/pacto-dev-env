@@ -49,7 +49,8 @@ services:
   # Pacto bot API daemon. Generate `pacto-bot-api.toml` with
   # `pacto-bot-admin` first; see `pacto-bot-api.toml.example`.
   pacto-bot-api:
-    image: ghcr.io/covenant-gov/pacto-bot-api:latest
+    image: ghcr.io/covenant-gov/pacto-bot-api:main
+    pull_policy: always
     environment:
       PACTO_DATA_DIR: /var/lib/pacto-bot-api
       PACTO_RELAY_URL: ws://nostr-relay:8080
