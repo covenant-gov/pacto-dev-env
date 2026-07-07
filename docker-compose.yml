@@ -20,6 +20,26 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # TLS-terminating sidecar for the Nostr relay. It exposes wss:// on host
+  # port 7001 and proxies plain ws:// to the relay container. By default it
+  # uses a Caddy-generated self-signed certificate; clients must either skip
+  # verification or run scripts/generate-local-certs.sh to switch to a
+  # locally-trusted mkcert certificate.
+  caddy:
+    image: caddy:2-alpine
+    container_name: pacto-caddy
+    ports:
+      - "127.0.0.1:7001:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    networks:
+      - pacto
+    depends_on:
+      nostr-relay:
+        condition: service_healthy
+    restart: unless-stopped
+
   # Pacto bot API daemon. Generate `pacto-bot-api.toml` with
   # `pacto-bot-admin` first; see `pacto-bot-api.toml.example`.
   pacto-bot-api:
@@ -240,3 +260,4 @@ networks:
 
 volumes:
   pacto-bot-api-data:
+  caddy-data:
