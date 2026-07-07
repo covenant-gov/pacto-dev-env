@@ -4,6 +4,8 @@ This guide gets you from zero to a working local dev environment for Pacto and i
 
 This is the single onboarding document: quick-start commands up front, full explanations and per-project workflows below.
 
+For a unified architecture and operations reference, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
 ---
 
 ## What this covers

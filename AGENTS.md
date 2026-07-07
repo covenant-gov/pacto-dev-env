@@ -129,7 +129,8 @@ When investigating service connectivity or protocol issues, prefer these tools:
 | `docker/debug.Dockerfile` | Sidecar image with `socat`, `websocat`, `curl`, `jq`, `nc`, `psql`, `redis-cli`. |
 | `pacto-bot-api.toml.example` | Template for the daemon config; copy to `pacto-bot-api.toml` and add bot identities. |
 | `pacto-bot-api.toml` | Generated daemon config with signing material; **never commit**. |
-| `GETTING_STARTED.md` | Full developer guide with per-project workflows. |
+| `ARCHITECTURE.md` | Unified architecture, operations, and connection guide for this repository. |
+| `README.md` | Quick-start and full developer guide with per-project workflows. |
 
 ## Runtime/Tooling Preferences
 
