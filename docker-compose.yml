@@ -20,6 +20,35 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # Pacto bot API daemon. Generate `pacto-bot-api.toml` with
+  # `pacto-bot-admin` first; see `pacto-bot-api.toml.example`.
+  pacto-bot-api:
+    image: ghcr.io/covenant-gov/pacto-bot-api:latest
+    environment:
+      PACTO_DATA_DIR: /var/lib/pacto-bot-api
+      PACTO_RELAY_URL: ws://nostr-relay:8080
+    command:
+      - pacto-bot-api
+      - --config
+      - /etc/pacto/pacto-bot-api.toml
+      - --data-dir
+      - /var/lib/pacto-bot-api
+    volumes:
+      - pacto-bot-api-data:/var/lib/pacto-bot-api
+      - ./pacto-bot-api.toml:/etc/pacto/pacto-bot-api.toml:ro
+    networks:
+      - pacto
+    depends_on:
+      nostr-relay:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /var/lib/pacto-bot-api/pacto-bot-api.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: on-failure
+
   # Local EVM testnet for pacto-gov / sponsor / security-manager contracts.
   # Anvil is built locally because the GHCR image is not yet available; the
   # other services use published images. See the Makefile for convenience targets.
@@ -174,3 +203,6 @@ networks:
   pacto:
     name: pacto
     driver: bridge
+
+volumes:
+  pacto-bot-api-data:

@@ -46,6 +46,16 @@ Both scripts are idempotent — re-running skips already-installed tools. The Ub
 
 ### 2. Start the local services
 
+Generate the daemon configuration first (the real file is ignored by Git):
+
+```bash
+cp pacto-bot-api.toml.example pacto-bot-api.toml
+chmod 600 pacto-bot-api.toml
+# Add bot identities, e.g. with `pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000`
+```
+
+Then start the stack:
+
 ```bash
 cd pacto-dev-env
 make up          # or: docker compose up -d --build
@@ -56,6 +66,7 @@ make up-all      # everything including bunker and aztec
 
 - Nostr relay on `ws://localhost:7000`
 - Anvil EVM testnet on `http://localhost:8545`
+- `pacto-bot-api` daemon, listening on a Unix socket inside the `pacto-bot-api-data` volume
 
 The `nostr-relay`, `aztec-sandbox`, and `nip46-bunker` services are pulled from prebuilt GHCR images. `anvil` is built locally from `docker/anvil.Dockerfile` because the GHCR image is not yet public, so the first run may take a few minutes while Foundry compiles.
 
@@ -101,6 +112,7 @@ cp .env.example .env
 export PATH="$HOME/.foundry/bin:$PATH"
 cast block-number --rpc-url http://localhost:8545
 curl -s http://localhost:7000 | head -5
+docker compose exec pacto-bot-api test -S /var/lib/pacto-bot-api/pacto-bot-api.sock && echo "daemon socket ready"
 ```
 
 ### Shared network

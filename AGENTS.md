@@ -8,9 +8,10 @@
 
 This repository is a **service orchestration layer**, not an application.
 
-- **Default stack** starts two services:
+- **Default stack** starts three services:
   - `nostr-relay` on `ws://localhost:7000`
   - `anvil` EVM testnet on `http://localhost:8545` (chain 31337)
+  - `pacto-bot-api` daemon on a Unix socket inside the `pacto-bot-api-data` volume
 - **Optional Compose profiles** extend the stack:
   - `--profile aztec` adds `aztec-sandbox` (`http://localhost:8080`, admin `http://localhost:8880`); it waits for Anvil to be healthy and deploys rollup contracts to it.
   - `--profile bunker` adds `nip46-bunker` (`http://127.0.0.1:3001`) backed by Postgres and Redis.
@@ -47,8 +48,15 @@ Both default to cloning repos into `~/src/covenant-gov/`. After running, open a 
 
 ### Start local services
 
+Generate `pacto-bot-api.toml` from the example (the real file must be kept secret and is ignored by Git), then start the stack:
+
 ```bash
-make up          # default stack: relay + anvil
+cp pacto-bot-api.toml.example pacto-bot-api.toml
+chmod 600 pacto-bot-api.toml
+# Add bot identities with `pacto-bot-admin`, e.g.:
+# pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000 >> pacto-bot-api.toml
+
+make up          # default stack: relay + anvil + pacto-bot-api
 make up-all      # default stack + aztec + bunker
 ```
 
@@ -118,7 +126,8 @@ When investigating service connectivity or protocol issues, prefer these tools:
 | `docker/anvil.Dockerfile` | Builds Foundry v1.7.1 (`anvil`, `cast`, `forge`, `chisel`) from source; used by the default stack. |
 | `docker/nip46-bunker.Dockerfile` | Local fallback build for Bunker46 server (no UI) with Node 24/pnpm. |
 | `docker/debug.Dockerfile` | Sidecar image with `socat`, `websocat`, `curl`, `jq`, `nc`, `psql`, `redis-cli`. |
-| `README.md` | Quick-start and port reference. |
+| `pacto-bot-api.toml.example` | Template for the daemon config; copy to `pacto-bot-api.toml` and add bot identities. |
+| `pacto-bot-api.toml` | Generated daemon config with signing material; **never commit**. |
 | `GETTING_STARTED.md` | Full developer guide with per-project workflows. |
 
 ## Runtime/Tooling Preferences
