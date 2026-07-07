@@ -71,8 +71,8 @@ services:
     volumes:
       - ${PACTO_GOV_DIR:-../pacto-gov}:/pacto-gov:ro
       - ./data/deployments:/pacto-gov/deployments
-      - ./data/cache:/tmp/pacto-gov-out
       - ./data/cache:/tmp/pacto-gov-cache
+      - ./data/out:/tmp/pacto-gov-out
       - ./scripts/seed-anvil.sh:/usr/local/bin/seed-anvil.sh:ro
     working_dir: /pacto-gov
     command:
