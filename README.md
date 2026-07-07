@@ -48,15 +48,26 @@ Both scripts are idempotent — re-running skips already-installed tools. The Ub
 
 ### 2. Start the local services
 
-Generate the daemon configuration first (the real file is ignored by Git):
+The `pacto-bot-api` daemon needs a `pacto-bot-api.toml` config file. `make up` will generate a minimal one automatically if it is missing.
+
+To start with a default bot identity, set both `PACTO_BOT_NPUB` and `PACTO_BOT_NSEC` in your environment or `.env` file before running `make up`:
 
 ```bash
-cp pacto-bot-api.toml.example pacto-bot-api.toml
-chmod 600 pacto-bot-api.toml
-# Add bot identities, e.g. with `pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000`
+# .env
+PACTO_BOT_NPUB=npub1...
+PACTO_BOT_NSEC=nsec1...
 ```
 
-Then start the stack:
+Without `PACTO_BOT_NSEC`, the daemon starts with no bots. You can add bot identities later by appending to `pacto-bot-api.toml`:
+
+```bash
+pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000 >> pacto-bot-api.toml
+docker compose restart pacto-bot-api
+```
+
+`pacto-bot-api.toml` is ignored by Git and created with mode `0o600` so signing material is not accidentally committed.
+
+Start the stack:
 
 ```bash
 cd pacto-dev-env
@@ -157,6 +168,14 @@ cp .env.example .env
 `make pull` fetches the latest prebuilt GHCR images without restarting anything.
 
 ### Verify the default stack
+
+Run the automated health check:
+
+```bash
+make check
+```
+
+Or check each service manually:
 
 ```bash
 export PATH="$HOME/.foundry/bin:$PATH"

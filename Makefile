@@ -6,15 +6,15 @@
 # Generate real bunker secrets in `.env` before using the `bunker` or `full`
 # profiles. See `.env.example` for the template.
 
-.PHONY: up up-all down seed pull build-anvil reset logs help
+.PHONY: up up-all down seed pull build-anvil reset logs check config help
 
-up: ## Start the default stack (nostr-relay + anvil + pacto-bot-api)
+up: config ## Start the default stack (nostr-relay + anvil + pacto-bot-api)
 	docker compose up -d --build
 
 help: ## Show this help message and all available targets
 	@awk 'BEGIN {FS = ":.*?##"; printf "\nPacto local development environment commands:\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-up-all: ## Start the full stack (default + aztec + bunker + seed)
+up-all: config ## Start the full stack (default + aztec + bunker + seed)
 	docker compose --profile full up -d --build
 
 seed: ## Deploy Pacto governance contracts to Anvil (one-shot)
@@ -35,3 +35,9 @@ reset: ## Stop all services and remove containers, networks, and data volumes
 
 logs: ## Follow logs for all running services
 	docker compose logs -f
+
+check: ## Verify the running stack is healthy and reachable
+	@./scripts/verify-stack.sh
+
+config: ## Generate pacto-bot-api.toml if missing
+	@./scripts/init-pacto-bot-api-config.sh
