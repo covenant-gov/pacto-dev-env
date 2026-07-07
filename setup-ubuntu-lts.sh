@@ -19,6 +19,17 @@ err()  { echo -e "${RED}[error]${NC} $*" >&2; }
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
+# Homebrew can be installed in /home/linuxbrew/.linuxbrew (passwordless sudo) or
+# $HOME/.linuxbrew (no sudo). Source whichever is present so that brew-installed
+# tools are immediately available in the current shell.
+eval_brew_shellenv() {
+  if [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" 2>/dev/null || true
+  elif [[ -x "$HOME/.linuxbrew/bin/brew ]]; then
+    eval "$($HOME/.linuxbrew/bin/brew shellenv)" 2>/dev/null || true
+  fi
+}
+
 run_privileged() {
   if [[ "$EUID" -eq 0 ]]; then
     "$@"
@@ -164,7 +175,20 @@ install_websocat() {
     return 0
   fi
 
-  log "Installing websocat..."
+  # Prefer Homebrew on both macOS and Linux; the Linux setup script installs
+  # Homebrew before this step. Fall back to a direct GitHub release download
+  # if Homebrew is unavailable or the install fails.
+  if command_exists brew || install_brew; then
+    eval_brew_shellenv
+    log "Installing websocat via Homebrew..."
+    if brew install websocat; then
+      log "websocat installed: $(websocat --version | head -1)"
+      return 0
+    fi
+    warn "Homebrew install of websocat failed; falling back to direct download."
+  fi
+
+  log "Installing websocat from GitHub release..."
   local asset
   case "$(uname -m)" in
     x86_64) asset="websocat.x86_64-unknown-linux-musl" ;;
@@ -256,23 +280,17 @@ install_aztec_cli() {
 install_brew() {
   if command_exists brew; then
     log "Homebrew already installed: $(brew --version | head -1)"
+    eval_brew_shellenv
     return 0
   fi
 
   log "Installing Homebrew..."
   NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-  # The official installer may use /home/linuxbrew/.linuxbrew when passwordless
-  # sudo is available, or $HOME/.linuxbrew otherwise. Source whichever exists.
-  if [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
-    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" 2>/dev/null || true
-  elif [[ -x "$HOME/.linuxbrew/bin/brew" ]]; then
-    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)" 2>/dev/null || true
-  fi
+  eval_brew_shellenv
 }
 
 install_gh_cli() {
-  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv 2>/dev/null || "$HOME/.linuxbrew/bin/brew" shellenv 2>/dev/null || true)"
+  eval_brew_shellenv
 
   if command_exists gh; then
     log "GitHub CLI already installed: $(gh --version | head -1)"
@@ -441,6 +459,9 @@ verify_install() {
 
   # Cargo/Foundry/Aztec may not be on PATH until a new shell; force them for this function.
   export PATH="$HOME/.cargo/bin:$HOME/.foundry/bin:$HOME/.aztec/bin:$PATH"
+
+  # Homebrew-installed tools may not be on PATH yet in the current shell.
+  eval_brew_shellenv
 
   docker --version
   docker compose version

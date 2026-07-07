@@ -65,6 +65,10 @@ make up-all      # default stack + aztec + bunker + seed
 
 `make up-all` and `make seed` automatically run `scripts/ensure-sibling-repos.sh`, which checks for the sibling `pacto-gov` repository and its Node dependencies. If either is missing, the script interactively offers to clone the repo and run `pnpm install`. In non-interactive environments, use `make up-all YES=1` to allow automatic cloning and installation.
 
+### Verify the stack
+
+`make check` runs `make check-env` (host tool verification) followed by the running-service health checks. `make check-env` only checks the host environment and prints remediation steps for missing tools (for example, run `setup-macos-arm64.sh` or `setup-ubuntu-lts.sh`).
+
 ### Optional profiles
 
 Aztec sandbox:
@@ -131,6 +135,8 @@ When investigating service connectivity or protocol issues, prefer these tools:
 | `docker/debug.Dockerfile` | Sidecar image with `socat`, `websocat`, `curl`, `jq`, `nc`, `psql`, `redis-cli`. |
 | `scripts/ensure-sibling-repos.sh` | Ensures the sibling `pacto-gov` repo and its dependencies are present before seeding. |
 | `scripts/seed-anvil.sh` | One-shot deploy of Pacto governance contracts to Anvil. |
+| `scripts/verify-env.sh` | Verifies the host has the required tools (Docker, Rust, Foundry, etc.) and prints remediation steps. |
+| `scripts/verify-stack.sh` | Verifies the running Docker Compose services are healthy and reachable. |
 | `pacto-bot-api.toml.example` | Template for the daemon config; copy to `pacto-bot-api.toml` and add bot identities. |
 | `pacto-bot-api.toml` | Generated daemon config with signing material; **never commit**. |
 | `ARCHITECTURE.md` | Unified architecture, operations, and connection guide for this repository. |

@@ -6,7 +6,7 @@
 # Generate real bunker secrets in `.env` before using the `bunker` or `full`
 # profiles. See `.env.example` for the template.
 
-.PHONY: help up up-all down seed pull build-anvil reset logs check config ensure-sibling-repos
+.PHONY: help up up-all down seed pull build-anvil reset logs check check-env config ensure-sibling-repos
 
 help: ## Show this help message and all available targets
 	@awk 'BEGIN {FS = ":.*?##"; printf "\nPacto local development environment commands:\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -39,7 +39,10 @@ reset: ## Stop all services and remove containers, networks, and data volumes
 logs: ## Follow logs for all running services
 	docker compose logs -f
 
-check: ## Verify the running stack is healthy and reachable
+check-env: ## Verify the host environment has the required tools installed
+	@./scripts/verify-env.sh
+
+check: check-env ## Verify the host environment and the running stack
 	@./scripts/verify-stack.sh
 
 config: ## Generate pacto-bot-api.toml if missing

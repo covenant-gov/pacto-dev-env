@@ -173,6 +173,14 @@ Run the automated health check:
 make check
 ```
 
+`make check` first verifies that the host has the required tools installed (Docker, Rust, Foundry, pnpm, jq, socat, websocat, etc.). If anything is missing, it prints the remediation step for your platform (run `setup-macos-arm64.sh` or `setup-ubuntu-lts.sh`). It then verifies that the running Docker Compose services are healthy and reachable.
+
+To check only the host environment:
+
+```bash
+make check-env
+```
+
 ![Self-documenting Make targets and healthy stack output](docs/assets/make-help-check.png)
 
 Or check each service manually:
