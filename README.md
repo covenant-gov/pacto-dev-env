@@ -59,7 +59,7 @@ Then start the stack:
 ```bash
 cd pacto-dev-env
 make up          # or: docker compose up -d --build
-make up-all      # everything including bunker and aztec
+make up-all      # everything including bunker, aztec, and seed
 ```
 
 `make up` starts the default stack:
@@ -70,9 +70,9 @@ make up-all      # everything including bunker and aztec
 
 The `nostr-relay`, `aztec-sandbox`, and `nip46-bunker` services are pulled from prebuilt GHCR images. `anvil` is built locally from `docker/anvil.Dockerfile` because the GHCR image is not yet public, so the first run may take a few minutes while Foundry compiles.
 
-`make up-all` is equivalent to `docker compose --profile full up -d --build`; it starts the default stack plus the Aztec sandbox and the NIP-46 bunker.
+`make up-all` is equivalent to `docker compose --profile full up -d --build`; it starts the default stack plus the Aztec sandbox, the NIP-46 bunker, and the optional Pacto governance seeder.
 
-> Aztec is heavy. Allocate at least 8 GB of RAM to Docker and expect a 2–3 minute startup while it deploys L1 contracts to Anvil.
+> Aztec is heavy. Allocate at least 8 GB of RAM to Docker and expect a 2–3 minute startup while it deploys L1 contracts to Anvil. The `seed` service deploys the Pacto governance contracts to Anvil when the `full` profile is used.
 
 ### Optional profiles
 
@@ -80,7 +80,8 @@ The `nostr-relay`, `aztec-sandbox`, and `nip46-bunker` services are pulled from 
 |---|---|
 | `aztec` | `aztec-sandbox` on `http://localhost:8080` (admin `http://localhost:8880`) |
 | `bunker` | `nip46-bunker` on `http://127.0.0.1:3001` |
-| `full` | `aztec` + `bunker` |
+| `seed` | One-shot deploy of Pacto governance contracts to Anvil; writes artifacts to `./data/deployments/31337/` |
+| `full` | `aztec` + `bunker` + `seed` |
 | `debug` | Interactive sidecar with `socat`, `websocat`, `curl`, `jq`, `nc`, `psql`, `redis-cli` |
 
 ```bash
@@ -96,6 +97,51 @@ docker compose --profile full up -d --build
 # Debug sidecar
 docker compose --profile debug up -d --build
 ```
+
+### Seed governance contracts to Anvil
+
+The `seed` profile is a one-shot service that deploys the Pacto governance
+contracts from the sibling `pacto-gov` repository to the local Anvil testnet
+(chain ID 31337). It runs `forge script script/Deploy.sol` using the default
+Anvil private key and writes deployment artifacts to
+`./data/deployments/31337/`.
+
+```bash
+# Deploy once (the `seed` service exits cleanly after deployment)
+make seed
+# or equivalently:
+# docker compose --profile seed run --rm seed
+```
+
+Requirements:
+
+* The `pacto-gov` repository must be present at `../pacto-gov` (configurable
+  with `PACTO_GOV_DIR` in your environment) and its Node dependencies must be
+  installed (`cd ../pacto-gov && pnpm install`) so Forge can resolve imports.
+* Anvil must be running or reachable; the `seed` service depends on Anvil
+  being healthy and will start it automatically if needed.
+
+After the deployment finishes, the full-system artifact is available at:
+
+```bash
+cat ./data/deployments/31337/full-system.json | jq .
+```
+
+Useful fields:
+
+| Field | Contract |
+|---|---|
+| `navePirataRegistry` | `NavePirataRegistry` |
+| `navePirataFactory` | `NavePirataFactory` |
+| `roleHatClonesFactory` | `RoleHatClonesFactory` |
+| `hats` | Hats Protocol v1 |
+
+The `seed` service is also included in the `full` profile, so `make up-all`
+deploys the contracts automatically while starting the optional services.
+
+`make seed` is idempotent: if `full-system.json` already exists, the service
+prints the existing artifact path and exits. Set `FORCE_SEED=1` to re-deploy,
+or run `make reset` to clear all state and start over.
 
 Before using `bunker` or `full`, generate real secrets in `.env`. Copy `.env.example` and override the placeholder values:
 
@@ -385,14 +431,15 @@ cargo test
 | Aztec sandbox | `http://localhost:8080` | `aztec-sandbox` | Profile `aztec`; binds to `127.0.0.1` |
 | Aztec admin | `http://localhost:8880` | `aztec-sandbox` | Profile `aztec`; binds to `127.0.0.1` |
 | NIP-46 bunker | `http://127.0.0.1:3001` | `nip46-bunker` | Profile `bunker`; binds to `127.0.0.1` |
+| Pacto seed artifacts | `./data/deployments/31337/` | `seed` | Profile `seed`; one-shot deploy output |
 | Debug sidecar | — | `debug` | Profile `debug`; `docker compose exec debug bash` |
 
 ## Recommended daily workflow
 
 1. Start Docker services: `cd pacto-dev-env && make up`.
 2. If working on Aztec, use `make up-all` or run `docker compose --profile aztec up -d --build`.
-3. In one terminal, run `pacto-app`: `cd pacto-app && pnpm run tauri:dev`.
-4. In another terminal, deploy governance contracts to Anvil and copy addresses into the app's network config.
+3. If working on governance contracts, run `make seed` to deploy the Pacto governance system to Anvil and read addresses from `./data/deployments/31337/full-system.json`.
+4. In one terminal, run `pacto-app`: `cd pacto-app && pnpm run tauri:dev`.
 5. Iterate. Re-run `cargo test`, `forge test`, or `pnpm test` as appropriate.
 
 ---

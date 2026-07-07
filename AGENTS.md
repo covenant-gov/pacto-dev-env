@@ -15,7 +15,8 @@ This repository is a **service orchestration layer**, not an application.
 - **Optional Compose profiles** extend the stack:
   - `--profile aztec` adds `aztec-sandbox` (`http://localhost:8080`, admin `http://localhost:8880`); it waits for Anvil to be healthy and deploys rollup contracts to it.
   - `--profile bunker` adds `nip46-bunker` (`http://127.0.0.1:3001`) backed by Postgres and Redis.
-  - `--profile full` adds both `aztec-sandbox` and `nip46-bunker`.
+  - `--profile seed` runs a one-shot deploy of the Pacto governance contracts to Anvil and writes artifacts to `./data/deployments/31337/`.
+  - `--profile full` adds `aztec-sandbox`, `nip46-bunker`, and the `seed` governance seeder.
   - `--profile debug` adds `debug`, an interactive sidecar with network/WebSocket inspection tools.
 - **Host setup scripts** install Docker, Rust, Node/pnpm, Foundry, Aztec CLI, and clone the ecosystem repos into `~/src/covenant-gov/`.
 - `docker-compose.yml` creates a shared `pacto` network. Sibling application composes should attach to it as `external: true` rather than duplicating these services.

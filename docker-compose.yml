@@ -49,6 +49,40 @@ services:
       start_period: 10s
     restart: on-failure
 
+  # One-shot governance contract seeder for local Anvil. Mounts the sibling
+  # pacto-gov repository read-only and writes deployment artifacts to a host
+  # directory so other services can read the deployed addresses.
+  seed:
+    image: pacto-anvil:local
+    profiles:
+      - seed
+      - full
+    depends_on:
+      anvil:
+        condition: service_healthy
+    environment:
+      PACTO_GOV_DIR: /pacto-gov
+      ANVIL_RPC_URL: http://anvil:8545
+      ANVIL_PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+      FORCE_SEED: "${FORCE_SEED:-0}"
+      FOUNDRY_OUT: /tmp/pacto-gov-out
+      FOUNDRY_CACHE_PATH: /tmp/pacto-gov-cache
+      FOUNDRY_BROADCAST: /tmp/pacto-gov-broadcast
+    volumes:
+      - ${PACTO_GOV_DIR:-../pacto-gov}:/pacto-gov:ro
+      - ./data/deployments:/pacto-gov/deployments
+      - ./data/cache:/tmp/pacto-gov-out
+      - ./data/cache:/tmp/pacto-gov-cache
+      - ./scripts/seed-anvil.sh:/usr/local/bin/seed-anvil.sh:ro
+    working_dir: /pacto-gov
+    command:
+      - /usr/local/bin/seed-anvil.sh
+    entrypoint:
+      - /bin/bash
+    networks:
+      - pacto
+    restart: "no"
+
   # Local EVM testnet for pacto-gov / sponsor / security-manager contracts.
   # Anvil is built locally because the GHCR image is not yet available; the
   # other services use published images. See the Makefile for convenience targets.
