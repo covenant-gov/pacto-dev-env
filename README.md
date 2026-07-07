@@ -12,7 +12,7 @@ For a unified architecture and operations reference, see [`ARCHITECTURE.md`](ARC
 
 This repo (`pacto-dev-env`) provides the shared local services that all Covenant Gov projects need:
 
-- Nostr relay on `ws://localhost:7000`
+- Nostr relay on `ws://localhost:7000` and `wss://localhost:7001` (TLS sidecar)
 - Anvil EVM testnet on `http://localhost:8545`
 - Aztec sandbox on `http://localhost:8080` (opt-in profile)
 - NIP-46 bunker on `http://127.0.0.1:3001` (opt-in profile)
@@ -48,15 +48,26 @@ Both scripts are idempotent — re-running skips already-installed tools. The Ub
 
 ### 2. Start the local services
 
-Generate the daemon configuration first (the real file is ignored by Git):
+The `pacto-bot-api` daemon needs a `pacto-bot-api.toml` config file. `make up` will generate a minimal one automatically if it is missing.
+
+To start with a default bot identity, set both `PACTO_BOT_NPUB` and `PACTO_BOT_NSEC` in your environment or `.env` file before running `make up`:
 
 ```bash
-cp pacto-bot-api.toml.example pacto-bot-api.toml
-chmod 600 pacto-bot-api.toml
-# Add bot identities, e.g. with `pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000`
+# .env
+PACTO_BOT_NPUB=npub1...
+PACTO_BOT_NSEC=nsec1...
 ```
 
-Then start the stack:
+Without `PACTO_BOT_NSEC`, the daemon starts with no bots. You can add bot identities later by appending to `pacto-bot-api.toml`:
+
+```bash
+pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000 >> pacto-bot-api.toml
+docker compose restart pacto-bot-api
+```
+
+`pacto-bot-api.toml` is ignored by Git and created with mode `0o600` so signing material is not accidentally committed.
+
+Start the stack:
 
 ```bash
 cd pacto-dev-env
@@ -66,9 +77,11 @@ make up-all      # everything including bunker, aztec, and seed
 
 `make up` starts the default stack:
 
-- Nostr relay on `ws://localhost:7000`
+- Nostr relay on `ws://localhost:7000` and `wss://localhost:7001` (TLS sidecar)
 - Anvil EVM testnet on `http://localhost:8545`
 - `pacto-bot-api` daemon, listening on a Unix socket inside the `pacto-bot-api-data` volume
+
+The `wss://localhost:7001` endpoint is served by a Caddy sidecar that terminates TLS and proxies plain `ws://` to the relay. By default it uses a Caddy-generated self-signed certificate, so clients must skip certificate verification (e.g. `websocat -k`) or run `scripts/generate-local-certs.sh` to switch to a locally-trusted `mkcert` certificate.
 
 The `nostr-relay`, `aztec-sandbox`, and `nip46-bunker` services are pulled from prebuilt GHCR images. `anvil` is built locally from `docker/anvil.Dockerfile` because the GHCR image is not yet public, so the first run may take a few minutes while Foundry compiles.
 
@@ -156,10 +169,21 @@ cp .env.example .env
 
 ### Verify the default stack
 
+Run the automated health check:
+
+```bash
+make check
+```
+
+![Self-documenting Make targets and healthy stack output](docs/assets/make-help-check.png)
+
+Or check each service manually:
+
 ```bash
 export PATH="$HOME/.foundry/bin:$PATH"
 cast block-number --rpc-url http://localhost:8545
 curl -s http://localhost:7000 | head -5
+websocat -k wss://localhost:7001 -1
 docker compose exec pacto-bot-api test -S /var/lib/pacto-bot-api/pacto-bot-api.sock && echo "daemon socket ready"
 ```
 
@@ -182,6 +206,7 @@ Inside an attached container, use service names rather than `localhost`:
 
 - `http://anvil:8545` for the EVM RPC
 - `ws://nostr-relay:8080` for the Nostr relay
+- `wss://caddy:8443` for the Nostr relay over TLS from inside the Docker network
 - `http://aztec-sandbox:8080` for Aztec RPC
 - `http://nip46-bunker:3000` for the NIP-46 bunker
 

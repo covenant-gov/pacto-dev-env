@@ -1,6 +1,11 @@
 # Example pacto-bot-api.toml for the pacto-dev-env compose stack.
-# Copy this file to `pacto-bot-api.toml`, set mode 0o600, and add real bot
-# identities (e.g. by running `pacto-bot-admin`).
+#
+# This file is generated automatically by `make up` if it does not exist. The
+# generated version uses environment variables for secrets so it can be created
+# safely and ignored by Git.
+#
+# To add a default bot via environment variables, set PACTO_BOT_NSEC in .env
+# or in your shell before running `make up`.
 #
 # WARNING: This file contains signing material. Never commit the real file.
 
@@ -12,7 +17,7 @@ socket_path = "/var/lib/pacto-bot-api/pacto-bot-api.sock"
 #
 # [[bots]]
 # id = "bosun"
-# npub = "npub1..."
+# npub = "${PACTO_BOT_NPUB}"
 # signing = { backend = "nsec", nsec = "${PACTO_BOT_NSEC}" }
 # relays = ["ws://nostr-relay:8080"]
 # capabilities = ["ReadMessages", "SendMessages"]
