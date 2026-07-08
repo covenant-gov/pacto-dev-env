@@ -65,6 +65,8 @@ pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000 >> pacto-b
 docker compose restart pacto-bot-api
 ```
 
+To create a dev bot identity automatically when the config is generated, set `PACTO_CREATE_DEV_BOT=1` together with both `PACTO_BOT_NPUB` and `PACTO_BOT_NSEC`. The script appends a bot named `dev` to the generated TOML. If the flag is set but the secrets are missing, the script prints a warning and still produces a daemon-only config.
+
 `pacto-bot-api.toml` is ignored by Git and created with mode `0o600` so signing material is not accidentally committed.
 
 Start the stack:
@@ -156,6 +158,47 @@ deploys the contracts automatically while starting the optional services.
 prints the existing artifact path and exits. Set `FORCE_SEED=1` to re-deploy,
 or run `make reset` to clear all state and start over.
 
+### Seed a Nave Pirata squad
+
+After the governance system is deployed, `make seed-squad` creates a new Nave
+Pirata squad on Anvil. The helper is **identity-aware**: it requires the public
+keys of a captain and a candidate crew member to be exported first:
+
+```bash
+pacto-bot-admin new captain  --backend nsec --relays ws://localhost:7000
+pacto-bot-admin new candidate --backend nsec --relays ws://localhost:7000
+
+export PACTO_SQUAD_CAPTAIN_NPUB="<captain-npub>"
+export PACTO_SQUAD_CANDIDATE_NPUB="<candidate-npub>"
+make seed-squad
+```
+
+If the required env vars are missing, `make seed-squad` prints explicit
+`pacto-bot-admin new` instructions and exits with status 1 without deploying a
+dummy squad. The deployed squad artifact is written to
+`./data/deployments/31337/squad.json`.
+
+### One-shot onboarding with `make dev`
+
+For a single-command start from a fresh clone:
+
+```bash
+make dev
+```
+
+`make dev` runs:
+
+1. `make pull` — fetch the latest prebuilt GHCR images.
+2. `make up` — start the default stack and generate `pacto-bot-api.toml`.
+3. If `PACTO_CREATE_DEV_BOT=1` and `PACTO_BOT_NPUB`/`PACTO_BOT_NSEC` are set,
+   append a `dev` bot identity to the generated config.
+4. Print the next-step banner: create captain/candidate identities, run
+   `make seed`, run `make seed-squad`, and connect sibling repos to the shared
+   `pacto` network and `pacto-bot-api-data` volume.
+
+Squad creation is intentionally not automated inside `make dev`; it requires
+two pre-created bot identities so the deployment is identity-aware.
+
 Before using `bunker` or `full`, generate real secrets in `.env`. Copy `.env.example` and override the placeholder values:
 
 ```bash
@@ -217,6 +260,62 @@ Inside an attached container, use service names rather than `localhost`:
 - `http://nip46-bunker:3000` for the NIP-46 bunker
 
 > Host-facing ports are bound to `127.0.0.1` by default, so services are only reachable from the local machine unless you explicitly change the bind address.
+
+### Shared `pacto-bot-api-data` volume and socket contract
+
+The `pacto-bot-api` daemon stores its database and Unix socket in a Docker
+named volume called `pacto-bot-api-data`. Sibling application composes (for
+example, `pacto-governance-bots`) should mount this volume as `external: true`
+and point to the agreed socket path so bot handlers can connect without running
+their own daemon.
+
+Expected contract for sibling repos:
+
+| Resource | Value / convention |
+|---|---|
+| External network | `pacto` (`external: true`) |
+| External volume | `pacto-bot-api-data` (`external: true`) |
+| Daemon socket path | `/var/lib/pacto-bot-api/pacto-bot-api.sock` |
+| EVM RPC URL | `http://anvil:8545` |
+| Nostr relay | `ws://nostr-relay:8080` |
+| Governance deployment artifact | `../pacto-dev-env/data/deployments/31337/full-system.json` |
+| Squad deployment artifact | `../pacto-dev-env/data/deployments/31337/squad.json` |
+
+Example compose attachment for a sibling bot repo:
+
+```yaml
+services:
+  bosun:
+    networks:
+      - pacto
+    volumes:
+      - pacto-bot-api-data:/run/pacto:ro
+    environment:
+      PACTO_GOVERNANCE_RPC_URL: http://anvil:8545
+      PACTO_GOVERNANCE_DAEMON_SOCKET: /var/lib/pacto-bot-api/pacto-bot-api.sock
+      PACTO_GOVERNANCE_GROUP_ID: local-dev-squad
+
+networks:
+  pacto:
+    external: true
+
+volumes:
+  pacto-bot-api-data:
+    external: true
+```
+
+The daemon socket path inside `pacto-bot-api.toml` must match the path sibling
+composes mount:
+
+```toml
+[daemon]
+data_dir = "/var/lib/pacto-bot-api"
+socket_path = "/var/lib/pacto-bot-api/pacto-bot-api.sock"
+```
+
+If a sibling repo needs a different mount point inside its own container
+(for example `/run/pacto/pacto-bot-api.sock`), use a symlink or a bind mount
+at startup; do not silently change the daemon's socket path.
 
 ---
 
