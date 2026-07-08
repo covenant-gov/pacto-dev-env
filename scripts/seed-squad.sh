@@ -39,6 +39,15 @@ DEPLOYMENTS_DIR="$REPO_ROOT/data/deployments/31337"
 SQUAD_ARTIFACT="$DEPLOYMENTS_DIR/squad.json"
 FULL_SYSTEM_ARTIFACT="$DEPLOYMENTS_DIR/full-system.json"
 
+CONFIG_FILE="$REPO_ROOT/pacto-bot-api.toml"
+CAPTAIN_BOT_ID="${PACTO_SQUAD_CAPTAIN_BOT_ID:-captain}"
+CANDIDATE_BOT_ID="${PACTO_SQUAD_CANDIDATE_BOT_ID:-candidate}"
+
+# If the user already exported the public keys, keep them. Otherwise we will try
+# to read them from the daemon config or create them on demand.
+PACTO_SQUAD_CAPTAIN_NPUB="${PACTO_SQUAD_CAPTAIN_NPUB:-}"
+PACTO_SQUAD_CANDIDATE_NPUB="${PACTO_SQUAD_CANDIDATE_NPUB:-}"
+
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
@@ -73,7 +82,138 @@ print_instructions() {
     echo -e "  export PACTO_SQUAD_CANDIDATE_NPUB=<candidate-npub>"
     echo -e "  make seed-squad"
     echo -e ""
+    echo -e "Alternatively, set PACTO_AUTO_CREATE_SQUAD_IDENTITIES=1 to skip the prompt."
+    echo -e ""
   } >&2
+}
+
+bot_exists_in_config() {
+  local bot_id="$1"
+  [ -f "$CONFIG_FILE" ] && grep -q "^id = \"$bot_id\"$" "$CONFIG_FILE"
+}
+
+get_npub_from_config() {
+  local bot_id="$1"
+  [ -f "$CONFIG_FILE" ] || return 0
+  awk -F'"' -v bot_id="$bot_id" '
+    /^\[\[/ { in_bots=0 }
+    /^\[\[bots\]\]/ { in_bots=1; id=""; npub="" }
+    in_bots && /^id = / { id=$2 }
+    in_bots && /^npub = / { npub=$2 }
+    in_bots && id == bot_id && npub != "" { print npub; exit }
+  ' "$CONFIG_FILE"
+}
+
+ensure_config_exists() {
+  if [ -d "$CONFIG_FILE" ]; then
+    warn "Removing bogus directory $CONFIG_FILE created by an empty Docker mount..."
+    rm -rf "$CONFIG_FILE"
+  fi
+  if [ ! -f "$CONFIG_FILE" ]; then
+    cat > "$CONFIG_FILE" <<EOF
+[daemon]
+data_dir = "/var/lib/pacto-bot-api"
+socket_path = "/var/lib/pacto-bot-api/pacto-bot-api.sock"
+
+EOF
+    chmod 600 "$CONFIG_FILE"
+  fi
+}
+
+docker_compose() {
+  docker compose -f "$REPO_ROOT/docker-compose.yml" "$@"
+}
+
+create_identity_in_container() {
+  local bot_id="$1"
+  local snippet
+  echo "Creating bot identity '$bot_id' inside the pacto-bot-api container..."
+  snippet="$(docker_compose run --rm --no-deps -T pacto-bot-api \
+    pacto-bot-admin new "$bot_id" \
+    --backend nsec \
+    --relays ws://nostr-relay:8080 \
+    --emit-secrets \
+    --output /tmp/pacto-bot-admin-identity.toml)"
+  if [ -z "$snippet" ]; then
+    err "Failed to create bot identity '$bot_id' inside the container."
+    exit 1
+  fi
+  printf '\n%s\n' "$snippet" >> "$CONFIG_FILE"
+  chmod 600 "$CONFIG_FILE"
+  echo "$snippet" | sed -n 's/^npub = "\(.*\)"$/\1/p'
+}
+
+restart_pacto_bot_api() {
+  local running
+  running="$(docker_compose ps pacto-bot-api --status running --format json 2>/dev/null | jq -s 'length' 2>/dev/null || echo 0)"
+  if [ "$running" -gt 0 ]; then
+    echo "Restarting pacto-bot-api so the new identities are loaded..."
+    docker_compose restart pacto-bot-api >/dev/null
+  else
+    echo "pacto-bot-api is not running; new identities will be picked up on the next start."
+  fi
+}
+
+prompt_auto_create() {
+  if [ "${PACTO_AUTO_CREATE_SQUAD_IDENTITIES:-}" = "1" ]; then
+    return 0
+  fi
+  if [ ! -t 0 ]; then
+    return 1
+  fi
+  local answer
+  read -r -p "Create required squad identities ('$CAPTAIN_BOT_ID' and '$CANDIDATE_BOT_ID') automatically inside the pacto-bot-api container? [y/N] " answer
+  case "$answer" in
+    [yY][eE][sS]|[yY]) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+ensure_squad_identities() {
+  if [ -z "$PACTO_SQUAD_CAPTAIN_NPUB" ]; then
+    PACTO_SQUAD_CAPTAIN_NPUB="$(get_npub_from_config "$CAPTAIN_BOT_ID")"
+    if [ -n "$PACTO_SQUAD_CAPTAIN_NPUB" ]; then
+      echo "Reusing existing captain identity from $CONFIG_FILE: $PACTO_SQUAD_CAPTAIN_NPUB"
+    fi
+  fi
+  if [ -z "$PACTO_SQUAD_CANDIDATE_NPUB" ]; then
+    PACTO_SQUAD_CANDIDATE_NPUB="$(get_npub_from_config "$CANDIDATE_BOT_ID")"
+    if [ -n "$PACTO_SQUAD_CANDIDATE_NPUB" ]; then
+      echo "Reusing existing candidate identity from $CONFIG_FILE: $PACTO_SQUAD_CANDIDATE_NPUB"
+    fi
+  fi
+
+  if [ -n "$PACTO_SQUAD_CAPTAIN_NPUB" ] && [ -n "$PACTO_SQUAD_CANDIDATE_NPUB" ]; then
+    return 0
+  fi
+
+  if prompt_auto_create; then
+    ensure_config_exists
+    for bot_id in "$CAPTAIN_BOT_ID" "$CANDIDATE_BOT_ID"; do
+      local npub
+      if bot_exists_in_config "$bot_id"; then
+        echo "Bot identity '$bot_id' already exists in $CONFIG_FILE; reusing it."
+        npub="$(get_npub_from_config "$bot_id")"
+      else
+        npub="$(create_identity_in_container "$bot_id")"
+      fi
+      if [ "$bot_id" = "$CAPTAIN_BOT_ID" ]; then
+        PACTO_SQUAD_CAPTAIN_NPUB="$npub"
+      else
+        PACTO_SQUAD_CANDIDATE_NPUB="$npub"
+      fi
+      if [ -z "$npub" ]; then
+        err "Could not resolve npub for bot identity '$bot_id'."
+        exit 1
+      fi
+    done
+    restart_pacto_bot_api
+  else
+    print_instructions
+    exit 1
+  fi
+
+  export PACTO_SQUAD_CAPTAIN_NPUB PACTO_SQUAD_CANDIDATE_NPUB
 }
 
 # Validate that the sibling repo looks right.
@@ -89,7 +229,10 @@ if [ ! -f "$FULL_SYSTEM_ARTIFACT" ]; then
   exit 1
 fi
 
-# Check required identity env vars.
+# Resolve required squad identities (env vars, existing config, or auto-create on demand).
+ensure_squad_identities
+
+# Final guard after resolution.
 if ! require_env PACTO_SQUAD_CAPTAIN_NPUB || ! require_env PACTO_SQUAD_CANDIDATE_NPUB; then
   print_instructions
   exit 1
