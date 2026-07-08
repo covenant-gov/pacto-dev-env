@@ -150,7 +150,12 @@ After `make seed` has produced `./data/deployments/31337/full-system.json`,
 **identity-aware** and does not fabricate a dummy single-user squad:
 
 - Required env vars: `PACTO_SQUAD_CAPTAIN_NPUB` and `PACTO_SQUAD_CANDIDATE_NPUB`.
-- If they are missing, the script prints `pacto-bot-admin new` instructions and exits 1.
+- If they are missing, the script checks `pacto-bot-api.toml` for existing
+  `captain` / `candidate` identities and reuses them, or prompts to create them
+  automatically inside the `pacto-bot-api` container. Set
+  `PACTO_AUTO_CREATE_SQUAD_IDENTITIES=1` to skip the prompt.
+- If they are missing and you decline auto-creation, the script prints
+  `pacto-bot-admin new` instructions and exits 1.
 - On success it writes `./data/deployments/31337/squad.json`.
 - The captain address is the deployer address (Anvil account #0) for local dev;
   the public-key env vars are captured here so a sibling repo's env generator can

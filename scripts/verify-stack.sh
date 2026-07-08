@@ -100,7 +100,20 @@ check_caddy() {
   fi
 }
 
+pacto_bot_api_socket_path() {
+  local config_text socket_path
+  config_text=$(docker compose exec -T pacto-bot-api cat /etc/pacto/pacto-bot-api.toml 2>/dev/null || true)
+  socket_path=$(printf '%s\n' "$config_text" | grep -E '^[[:space:]]*socket_path[[:space:]]*=' | head -1 | cut -d'=' -f2- | sed -e "s/^[[:space:]]*//; s/[[:space:]]*$//; s/^\"//; s/\"$//; s/^'//; s/'$//")
+  if [ -n "$socket_path" ]; then
+    echo "$socket_path"
+  else
+    # Daemon default when socket_path is not configured.
+    echo "/var/lib/pacto-bot-api/.local/share/pacto-bot-api/pacto-bot-api.sock"
+  fi
+}
+
 check_pacto_bot_api() {
+  local socket_path
   echo "Checking pacto-bot-api..."
   if [ "$(service_state pacto-bot-api)" != "running" ]; then
     fail "pacto-bot-api container is not running"
@@ -113,10 +126,11 @@ check_pacto_bot_api() {
     warn "pacto-bot-api container is running but not yet healthy"
   fi
 
-  if docker compose exec pacto-bot-api test -S /var/lib/pacto-bot-api/pacto-bot-api.sock >/dev/null 2>&1; then
-    pass "pacto-bot-api socket is present"
+  socket_path=$(pacto_bot_api_socket_path)
+  if docker compose exec pacto-bot-api test -S "$socket_path" >/dev/null 2>&1; then
+    pass "pacto-bot-api socket is present at $socket_path"
   else
-    fail "pacto-bot-api socket is missing"
+    fail "pacto-bot-api socket is missing at $socket_path"
   fi
 }
 

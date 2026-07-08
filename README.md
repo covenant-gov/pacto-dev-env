@@ -161,8 +161,10 @@ or run `make reset` to clear all state and start over.
 ### Seed a Nave Pirata squad
 
 After the governance system is deployed, `make seed-squad` creates a new Nave
-Pirata squad on Anvil. The helper is **identity-aware**: it requires the public
-keys of a captain and a candidate crew member to be exported first:
+Pirata squad on Anvil. The helper is **identity-aware**: it needs the public
+keys of a squad captain and a candidate crew member.
+
+You can export them manually:
 
 ```bash
 pacto-bot-admin new captain  --backend nsec --relays ws://localhost:7000
@@ -173,10 +175,23 @@ export PACTO_SQUAD_CANDIDATE_NPUB="<candidate-npub>"
 make seed-squad
 ```
 
-If the required env vars are missing, `make seed-squad` prints explicit
-`pacto-bot-admin new` instructions and exits with status 1 without deploying a
-dummy squad. The deployed squad artifact is written to
-`./data/deployments/31337/squad.json`.
+Or let the script bootstrap them for you: if the env vars are missing,
+`make seed-squad` will first check `pacto-bot-api.toml` and reuse any existing
+`captain` / `candidate` identities. If they do not exist, it prompts to create
+them automatically inside the `pacto-bot-api` container and appends the
+resulting identities to `pacto-bot-api.toml` so the daemon can load them.
+
+To skip the interactive prompt and auto-create the identities, set:
+
+```bash
+export PACTO_AUTO_CREATE_SQUAD_IDENTITIES=1
+make seed-squad
+```
+
+If the required env vars are missing and you decline auto-creation,
+`make seed-squad` prints explicit `pacto-bot-admin new` instructions and exits
+with status 1 without deploying a dummy squad. The deployed squad artifact is
+written to `./data/deployments/31337/squad.json`.
 
 ### One-shot onboarding with `make dev`
 

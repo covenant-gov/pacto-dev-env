@@ -40,10 +40,11 @@ dev: ## One-shot: pull images, start default stack, optional dev bot, seed contr
 	fi
 	@echo
 	@echo "Next steps:"
-	@echo "  1. Create captain/candidate identities with pacto-bot-admin if you haven't already:"
-	@echo "       pacto-bot-admin new captain --backend nsec --relays ws://localhost:7000"
-	@echo "       pacto-bot-admin new candidate --backend nsec --relays ws://localhost:7000"
-	@echo "  2. Export PACTO_SQUAD_CAPTAIN_NPUB and PACTO_SQUAD_CANDIDATE_NPUB, then run:"
+	@echo "  1. Create captain/candidate identities with pacto-bot-admin, or run:"
+	@echo "       PACTO_AUTO_CREATE_SQUAD_IDENTITIES=1 make seed-squad"
+	@echo "       to let the script create them inside the pacto-bot-api container."
+	@echo "  2. If you created them manually, export PACTO_SQUAD_CAPTAIN_NPUB and"
+	@echo "     PACTO_SQUAD_CANDIDATE_NPUB, then run:"
 	@echo "       make seed-squad"
 	@echo "  3. In pacto-governance-bots, generate bots/bosun/.env and start the bot:"
 	@echo "       make env"
@@ -66,7 +67,7 @@ build-anvil: ## Build the local Anvil/Foundry image
 
 reset: ## Stop all services and remove containers, networks, and data volumes
 	docker compose --profile full --profile aztec --profile bunker --profile seed --profile debug down -v --remove-orphans
-	rm -rf ./data
+	rm -rf ./data 2>/dev/null || docker run --rm -v "$(CURDIR):/host" --workdir /host alpine:latest rm -rf ./data
 
 logs: ## Follow logs for all running services
 	docker compose logs -f
