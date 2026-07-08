@@ -20,6 +20,18 @@ pass() { echo -e "  ${GREEN}✓${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1"; failed=1; }
 warn() { echo -e "  ${YELLOW}⚠${NC} $1"; }
 
+get_version() {
+  local service="$1" command="$2" flag output
+  shift 2
+  for flag in "$@"; do
+    if output=$(docker compose exec -T "$service" "$command" "$flag" 2>/dev/null); then
+      echo "$output" | head -1 | tr -d '\r'
+      return 0
+    fi
+  done
+  return 1
+}
+
 service_state() {
   local raw
   raw=$(docker compose ps --format json "$1" 2>/dev/null)
@@ -33,6 +45,7 @@ service_health() {
 }
 
 check_anvil() {
+  local version
   echo "Checking anvil..."
   if [ "$(service_state anvil)" != "running" ]; then
     fail "anvil container is not running"
@@ -43,6 +56,11 @@ check_anvil() {
     pass "anvil container is healthy"
   else
     warn "anvil container is running but not yet healthy"
+  fi
+
+  version=$(get_version anvil anvil --version)
+  if [ -n "$version" ]; then
+    pass "anvil version: $version"
   fi
 
   if command -v cast >/dev/null 2>&1; then
@@ -57,6 +75,7 @@ check_anvil() {
 }
 
 check_nostr_relay() {
+  local version
   echo "Checking nostr-relay..."
   if [ "$(service_state nostr-relay)" != "running" ]; then
     fail "nostr-relay container is not running"
@@ -67,6 +86,11 @@ check_nostr_relay() {
     pass "nostr-relay container is healthy"
   else
     warn "nostr-relay container is running but not yet healthy"
+  fi
+
+  version=$(get_version nostr-relay ./nostr-rs-relay --version -V)
+  if [ -n "$version" ]; then
+    pass "nostra version: $version"
   fi
 
   if curl -sS http://localhost:7000 >/dev/null 2>&1; then
@@ -100,6 +124,21 @@ check_caddy() {
   fi
 }
 
+pacto_bot_api_version() {
+  local body
+  if body=$(docker compose exec -T pacto-bot-api perl -MIO::Socket::INET -e '
+    my $s = IO::Socket::INET->new(PeerAddr => "127.0.0.1:9800", Timeout => 5) or exit 1;
+    print $s "GET /version HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n";
+    my $body = "";
+    while (<$s>) { $body .= $_ }
+    close $s;
+    $body =~ s/.*\r?\n\r?\n//s;
+    print $body;
+  ' 2>/dev/null); then
+    echo "$body" | jq -r 'if .version then "pacto-bot-api \(.version) (\(.git_sha // "unknown"))" else empty end' 2>/dev/null
+  fi
+}
+
 pacto_bot_api_socket_path() {
   local config_text socket_path
   config_text=$(docker compose exec -T pacto-bot-api cat /etc/pacto/pacto-bot-api.toml 2>/dev/null || true)
@@ -113,7 +152,7 @@ pacto_bot_api_socket_path() {
 }
 
 check_pacto_bot_api() {
-  local socket_path
+  local socket_path version
   echo "Checking pacto-bot-api..."
   if [ "$(service_state pacto-bot-api)" != "running" ]; then
     fail "pacto-bot-api container is not running"
@@ -124,6 +163,11 @@ check_pacto_bot_api() {
     pass "pacto-bot-api container is healthy"
   else
     warn "pacto-bot-api container is running but not yet healthy"
+  fi
+
+  version=$(pacto_bot_api_version)
+  if [ -n "$version" ]; then
+    pass "pacto-bot-api version: $version"
   fi
 
   socket_path=$(pacto_bot_api_socket_path)

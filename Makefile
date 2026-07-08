@@ -6,7 +6,7 @@
 # Generate real bunker secrets in `.env` before using the `bunker` or `full`
 # profiles. See `.env.example` for the template.
 
-.PHONY: help up up-all down seed seed-squad pull build-anvil reset logs check check-env config ensure-sibling-repos dev
+.PHONY: help up up-all down seed seed-squad pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad
 
 help: ## Show this help message and all available targets
 	@awk 'BEGIN {FS = ":.*?##"; printf "\nPacto local development environment commands:\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -23,7 +23,7 @@ up-all: config ensure-sibling-repos ## Start the full stack (default + aztec + b
 seed: ensure-sibling-repos ## Deploy Pacto governance contracts to Anvil (one-shot)
 	docker compose --profile seed run --rm seed
 
-seed-squad: ## Deploy a Nave Pirata squad to Anvil (requires PACTO_SQUAD_* env vars)
+seed-squad: ## Deploy a Nave Pirata squad to Anvil (identities + on-chain crew bootstrap)
 	@./scripts/seed-squad.sh
 
 dev: ## One-shot: pull images, start default stack, optional dev bot, seed contracts, print next steps
@@ -80,3 +80,6 @@ check: check-env ## Verify the host environment and the running stack
 
 config: ## Generate pacto-bot-api.toml if missing
 	@./scripts/init-pacto-bot-api-config.sh
+
+verify-squad: ## Gather on-chain debug info for the seeded squad (registry, Safe, governance, members)
+	@./scripts/verify-squad.sh

@@ -62,6 +62,7 @@ services:
       - /etc/pacto/pacto-bot-api.toml
       - --data-dir
       - /var/lib/pacto-bot-api
+      - --enable-http
     volumes:
       - pacto-bot-api-data:/var/lib/pacto-bot-api
       - ./pacto-bot-api.toml:/etc/pacto/pacto-bot-api.toml:ro
