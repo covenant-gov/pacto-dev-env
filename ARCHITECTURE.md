@@ -95,6 +95,8 @@ The fastest way to start is the `Makefile`:
 make up          # default stack: relay + anvil + pacto-bot-api
 make up-all      # default stack + aztec + bunker + seed
 make seed        # run the seed deployer on its own
+make seed-squad  # deploy a Nave Pirata squad (requires captain/candidate env vars)
+make dev         # pull + up + optional dev-bot + printed next steps
 make down        # stop everything across all profiles
 make reset       # stop everything and delete ./data
 ```
@@ -104,11 +106,12 @@ Under the hood:
 1. `docker compose pull` fetches the prebuilt GHCR images.
 2. `docker compose build anvil` builds the local Anvil image if it is not cached.
 3. `docker compose up -d --build` starts the default stack.
-4. Services with dependencies wait for healthchecks:
+4. `scripts/init-pacto-bot-api-config.sh` generates `pacto-bot-api.toml` if it is missing. If `PACTO_CREATE_DEV_BOT=1` and both `PACTO_BOT_NPUB` and `PACTO_BOT_NSEC` are set, it appends a `dev` bot identity; otherwise it creates a daemon-only config.
+5. Services with dependencies wait for healthchecks:
    - `pacto-bot-api` waits for `nostr-relay` to be healthy.
    - `aztec-sandbox` waits for `anvil` to be healthy.
    - `nip46-bunker` waits for its DB and Redis to be healthy.
-5. When the `seed` profile is active, the one-shot `seed` service runs after `anvil` is healthy and writes `./data/deployments/31337/full-system.json`.
+6. When the `seed` profile is active, the one-shot `seed` service runs after `anvil` is healthy and writes `./data/deployments/31337/full-system.json`.
 
 ### Required operator setup before `make up`
 
@@ -139,6 +142,20 @@ Profiles keep heavy or optional services opt-in.
 
 `make up-all` is equivalent to `docker compose --profile full up -d --build`.
 
+### Squad seeding
+
+After `make seed` has produced `./data/deployments/31337/full-system.json`,
+`make seed-squad` deploys a single Nave Pirata squad via
+`pacto-gov/script/DeployNavePirata.s.sol`. It is intentionally
+**identity-aware** and does not fabricate a dummy single-user squad:
+
+- Required env vars: `PACTO_SQUAD_CAPTAIN_NPUB` and `PACTO_SQUAD_CANDIDATE_NPUB`.
+- If they are missing, the script prints `pacto-bot-admin new` instructions and exits 1.
+- On success it writes `./data/deployments/31337/squad.json`.
+- The captain address is the deployer address (Anvil account #0) for local dev;
+  the public-key env vars are captured here so a sibling repo's env generator can
+  consume them without re-deriving keys.
+
 ## Connecting sibling application composes
 
 Application repositories should not define their own `anvil`, `nostr-relay`, or `aztec-sandbox` services. Instead, they attach to the `pacto` network and the shared daemon socket volume.
@@ -152,12 +169,12 @@ services:
     networks:
       - pacto
     volumes:
-      - pacto-bot-api-data:/run/pacto:ro
+      - pacto-bot-api-data:/var/lib/pacto-bot-api:ro
     environment:
       PACTO_GOVERNANCE_RPC_URL: http://anvil:8545
       PACTO_GOVERNANCE_DAEMON_SOCKET: /var/lib/pacto-bot-api/pacto-bot-api.sock
       PACTO_GOVERNANCE_GROUP_ID: local-dev-squad
-
+```
 networks:
   pacto:
     external: true
@@ -177,6 +194,21 @@ Inside the attached container, use service names instead of `localhost`:
 - `http://nip46-bunker:3000` for the bunker
 
 Host-facing ports are bound to `127.0.0.1` by default, so they are only reachable from the local machine.
+
+### Shared network / volume / socket contract
+
+Sibling application composes agree on the following contract:
+
+| Resource | Value | Where declared |
+|---|---|---|
+| External network | `pacto` | `docker-compose.yml` in this repo; `external: true` in sibling composes |
+| External named volume | `pacto-bot-api-data` | Created here by `pacto-bot-api`; mounted as `external: true` in sibling composes |
+| Daemon socket path | `/var/lib/pacto-bot-api/pacto-bot-api.sock` | `pacto-bot-api.toml` `[daemon]` section |
+| Governance deployment artifact | `data/deployments/31337/full-system.json` | Written by the `seed` profile; sibling repos read it relative to `pacto-dev-env` |
+| Squad deployment artifact | `data/deployments/31337/squad.json` | Written by `scripts/seed-squad.sh` |
+
+Sibling repos must not redefine `pacto-bot-api-data` as a non-external volume or
+change the socket path without a matching migration in every dependent compose.
 
 ## Data layout
 
