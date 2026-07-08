@@ -33,6 +33,10 @@ done
 
 cast block-number --rpc-url "$ANVIL_RPC_URL" >/dev/null
 
+# Make sure the canonical Hats / Safe singletons exist on Anvil before the
+# Pacto deploy scripts run, because they assume mainnet external addresses.
+/usr/local/bin/ensure-external-contracts.sh
+
 echo "Deploying Pacto governance contracts to Anvil (chain ID 31337)..."
 
 forge script script/Deploy.sol \

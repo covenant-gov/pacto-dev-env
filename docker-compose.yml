@@ -97,12 +97,15 @@ services:
       FOUNDRY_OUT: /tmp/pacto-gov-out
       FOUNDRY_CACHE_PATH: /tmp/pacto-gov-cache
       FOUNDRY_BROADCAST: /tmp/pacto-gov-broadcast
+      PACTO_BYTECODE_DIR: /bytecode
     volumes:
       - ${PACTO_GOV_DIR:-../pacto-gov}:/pacto-gov
       - ./data/deployments:/pacto-gov/deployments
       - ./data/cache:/tmp/pacto-gov-cache
       - ./data/out:/tmp/pacto-gov-out
       - ./scripts/seed-anvil.sh:/usr/local/bin/seed-anvil.sh:ro
+      - ./scripts/ensure-external-contracts.sh:/usr/local/bin/ensure-external-contracts.sh:ro
+      - ./scripts/bytecode:/bytecode:ro
     working_dir: /pacto-gov
     command:
       - /usr/local/bin/seed-anvil.sh

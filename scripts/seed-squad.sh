@@ -6,7 +6,7 @@ set -euo pipefail
 # Usage:
 #   ./scripts/seed-squad.sh
 #
-# Required environment variables:
+# Required environment variables (or auto-create; see below):
 #   PACTO_SQUAD_CAPTAIN_NPUB  - captain Nostr public key (hex or bech32 npub)
 #   PACTO_SQUAD_CANDIDATE_NPUB - candidate Nostr public key (hex or bech32 npub)
 #
@@ -17,9 +17,21 @@ set -euo pipefail
 #                          (default: Anvil account #0)
 #   PACTO_SQUAD_METADATA_URI - metadata URI for the squad (default: ipfs://Qmdummy)
 #   FORCE_SEED_SQUAD     - set to 1 to re-deploy when squad.json already exists
+#   PACTO_AUTO_CREATE_SQUAD_IDENTITIES - set to 1 to skip the prompt and create
+#                          the captain/candidate identities automatically
+#   PACTO_SQUAD_CAPTAIN_BOT_ID - bot id to use/create in pacto-bot-api.toml (default: captain)
+#   PACTO_SQUAD_CANDIDATE_BOT_ID - bot id to use/create in pacto-bot-api.toml (default: candidate)
 #
-# If the required env vars are missing, the script prints explicit
-# `pacto-bot-admin new` instructions and exits with status 1.
+# Identity resolution:
+#   1. If the required env vars are set, they are used.
+#   2. Otherwise, the script looks for existing `captain` / `candidate` identities
+#      in pacto-bot-api.toml and reuses them.
+#   3. Otherwise, it prompts to create the identities automatically inside the
+#      pacto-bot-api container (or auto-creates if
+#      PACTO_AUTO_CREATE_SQUAD_IDENTITIES=1). The resulting identities are
+#      appended to pacto-bot-api.toml and the daemon is restarted when running.
+#   4. If all of the above fail, it prints explicit `pacto-bot-admin new`
+#      instructions and exits with status 1.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -118,6 +130,24 @@ socket_path = "/var/lib/pacto-bot-api/pacto-bot-api.sock"
 EOF
     chmod 600 "$CONFIG_FILE"
   fi
+}
+
+copy_artifact_with_docker() {
+  local src="$1"
+  local dst="$2"
+  local dst_dir
+  dst_dir="$(dirname "$dst")"
+  # If the host can write directly, prefer a plain cp to avoid container churn.
+  if cp "$src" "$dst" 2>/dev/null; then
+    return 0
+  fi
+  echo "[seed-squad] Host copy failed; copying through the pacto-anvil container as root..."
+  docker run --rm \
+    -v "$src:/src:ro" \
+    -v "$dst_dir:/dst" \
+    --entrypoint cp \
+    pacto-anvil:local \
+    /src "/dst/$(basename "$dst")"
 }
 
 docker_compose() {
@@ -257,6 +287,35 @@ if [ -z "$NAVE_PIRATA_FACTORY" ] || [ "$NAVE_PIRATA_FACTORY" = "null" ]; then
   exit 1
 fi
 
+# Read the deployed master copy addresses from the full-system artifact so the
+# squad script can use the locally deployed implementations on Anvil.
+MASTER_COPY_QUARTERMASTER="$(jq -r '.masterQuartermaster' "$FULL_SYSTEM_ARTIFACT")"
+MASTER_COPY_MUTINY_MODULE="$(jq -r '.masterMutinyModule' "$FULL_SYSTEM_ARTIFACT")"
+MASTER_COPY_TREASURY_AUTHORITY="$(jq -r '.masterTreasuryAuthority' "$FULL_SYSTEM_ARTIFACT")"
+MASTER_COPY_SQUAD_ADMIN_IMPL="$(jq -r '.masterSquadAdminImpl' "$FULL_SYSTEM_ARTIFACT")"
+if [ -z "$MASTER_COPY_QUARTERMASTER" ] || [ "$MASTER_COPY_QUARTERMASTER" = "null" ] || \
+   [ -z "$MASTER_COPY_MUTINY_MODULE" ] || [ "$MASTER_COPY_MUTINY_MODULE" = "null" ] || \
+   [ -z "$MASTER_COPY_TREASURY_AUTHORITY" ] || [ "$MASTER_COPY_TREASURY_AUTHORITY" = "null" ] || \
+   [ -z "$MASTER_COPY_SQUAD_ADMIN_IMPL" ] || [ "$MASTER_COPY_SQUAD_ADMIN_IMPL" = "null" ]; then
+  err "Missing master copy addresses in $FULL_SYSTEM_ARTIFACT"
+  err "Run 'make seed' first to deploy the Pacto governance master copies."
+  exit 1
+fi
+
+# Compute a fresh saltNonce so repeated runs (or a failed prior run that already
+# wrote a squad-<salt>.json) avoid deterministic Safe proxy collisions.
+SQUAD_SALT_NONCE=1
+for f in "$PACTO_GOV_DIR/deployments/31337"/squad-*.json; do
+  if [ -f "$f" ]; then
+    salt="$(basename "$f" | sed -n 's/^squad-\([0-9]*\)\.json$/\1/p')"
+    if [ -n "$salt" ] && [ "$salt" -ge "$SQUAD_SALT_NONCE" ] 2>/dev/null; then
+      SQUAD_SALT_NONCE=$((salt + 1))
+    fi
+  fi
+done
+
+echo "Using saltNonce=$SQUAD_SALT_NONCE for squad deployment."
+
 echo "Waiting for Anvil at $ANVIL_RPC_URL..."
 for _ in $(seq 1 30); do
   if cast block-number --rpc-url "$ANVIL_RPC_URL" >/dev/null 2>&1; then
@@ -268,6 +327,10 @@ done
 
 cast block-number --rpc-url "$ANVIL_RPC_URL" >/dev/null
 
+# Ensure the canonical Hats / Safe singletons are present on Anvil before the
+# squad deploy runs, in case the chain was reset or seeded without them.
+"$SCRIPT_DIR/ensure-external-contracts.sh"
+
 echo "Deploying Nave Pirata squad to Anvil (chain ID 31337)..."
 echo "  captain:  $CAPTAIN_ADDRESS"
 echo "  factory:  $NAVE_PIRATA_FACTORY"
@@ -278,6 +341,11 @@ echo "  metadata: $SQUAD_METADATA_URI"
   NAVE_PIRATA_FACTORY="$NAVE_PIRATA_FACTORY" \
     CAPTAIN="$CAPTAIN_ADDRESS" \
     SQUAD_METADATA_URI="$SQUAD_METADATA_URI" \
+    MASTER_COPY_QUARTERMASTER="$MASTER_COPY_QUARTERMASTER" \
+    MASTER_COPY_MUTINY_MODULE="$MASTER_COPY_MUTINY_MODULE" \
+    MASTER_COPY_TREASURY_AUTHORITY="$MASTER_COPY_TREASURY_AUTHORITY" \
+    MASTER_COPY_SQUAD_ADMIN_IMPL="$MASTER_COPY_SQUAD_ADMIN_IMPL" \
+    SQUAD_SALT_NONCE="$SQUAD_SALT_NONCE" \
     forge script script/DeployNavePirata.s.sol \
       --rpc-url "$ANVIL_RPC_URL" \
       --broadcast \
@@ -298,7 +366,7 @@ if [ -z "$SQUAD_FILE" ] || [ ! -f "$SQUAD_FILE" ]; then
   exit 1
 fi
 
-cp "$SQUAD_FILE" "$SQUAD_ARTIFACT"
+copy_artifact_with_docker "$SQUAD_FILE" "$SQUAD_ARTIFACT"
 echo "Squad deployment complete."
 echo "Artifact: $SQUAD_ARTIFACT"
 jq . "$SQUAD_ARTIFACT" 2>/dev/null || true

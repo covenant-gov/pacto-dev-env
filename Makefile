@@ -67,7 +67,7 @@ build-anvil: ## Build the local Anvil/Foundry image
 
 reset: ## Stop all services and remove containers, networks, and data volumes
 	docker compose --profile full --profile aztec --profile bunker --profile seed --profile debug down -v --remove-orphans
-	rm -rf ./data
+	rm -rf ./data 2>/dev/null || docker run --rm -v "$(CURDIR):/host" --workdir /host alpine:latest rm -rf ./data
 
 logs: ## Follow logs for all running services
 	docker compose logs -f
