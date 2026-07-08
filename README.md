@@ -193,6 +193,19 @@ If the required env vars are missing and you decline auto-creation,
 with status 1 without deploying a dummy squad. The deployed squad artifact is
 written to `./data/deployments/31337/squad.json`.
 
+### Verify the squad
+
+After seeding, gather on-chain debug and governance data for the squad:
+
+```bash
+make verify-squad
+```
+
+This prints the squad identity, cross-checks the registry, lists Safe
+owners/modules, shows governance parameters, enumerates current hat wearers
+(captain + crew), and reports any inconsistencies. It exits with a non-zero
+status if any critical check fails.
+
 ### One-shot onboarding with `make dev`
 
 For a single-command start from a fresh clone:
