@@ -29,7 +29,6 @@ FULL_SYSTEM_ARTIFACT="${PACTO_GOV_ARTIFACT:-$DEPLOYMENTS_DIR/full-system.json}"
 RPC_URL="${ANVIL_RPC_URL:-http://localhost:8545}"
 CONFIG_FILE="$REPO_ROOT/pacto-bot-api.toml"
 
-TRANSFER_SINGLE_SIG="TransferSingle(address,address,address,uint256,uint256)"
 TRANSFER_SINGLE_TOPIC="0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62"
 
 RED='\033[0;31m'
@@ -124,8 +123,6 @@ load_artifacts() {
 
   HATS=$(jq -r '.hats' "$FULL_SYSTEM_ARTIFACT")
   REGISTRY=$(jq -r '.navePirataRegistry' "$FULL_SYSTEM_ARTIFACT")
-  FACTORY=$(jq -r '.navePirataFactory' "$FULL_SYSTEM_ARTIFACT")
-  DEPLOYER=$(jq -r '.deployer' "$FULL_SYSTEM_ARTIFACT")
 
   RPC_CHAIN_ID=$(cast chain-id --rpc-url "$RPC_URL")
   BLOCK_NUMBER=$(cast block-number --rpc-url "$RPC_URL")
@@ -314,8 +311,10 @@ view_hat_line() {
   local -a lines
   mapfile -t lines <<< "$result"
   local details="${lines[0]:-}"
-  local max_supply="$(strip_suffix "${lines[1]:-}")"
-  local supply="$(strip_suffix "${lines[2]:-}")"
+  local max_supply
+  max_supply="$(strip_suffix "${lines[1]:-}")"
+  local supply
+  supply="$(strip_suffix "${lines[2]:-}")"
   local eligibility="${lines[3]:-}"
   local toggle="${lines[4]:-}"
   local active="${lines[8]:-}"
@@ -344,7 +343,6 @@ check_hats_and_members() {
 
   # Squad-admin hat ID
   SA_HAT_ID=$(uint_value "$SQUAD_ADMIN" "squadAdminHatId()(uint256)")
-  SA_CAPTAIN_HAT_ID=$(uint_value "$SQUAD_ADMIN" "captainHatId()(uint256)")
 
   view_hat_line "$TOP_HAT_ID" "Top hat"
   view_hat_line "$QM_CAPTAIN_HAT_ID" "Captain hat"
