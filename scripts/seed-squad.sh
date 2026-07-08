@@ -56,24 +56,24 @@ require_env() {
 }
 
 print_instructions() {
-  cat >&2 <<EOF
-
-${YELLOW}Squad creation requires two Nostr identities:${NC}
-  - PACTO_SQUAD_CAPTAIN_NPUB  (the squad captain)
-  - PACTO_SQUAD_CANDIDATE_NPUB (a candidate crew member)
-
-Create them with pacto-bot-admin and re-run this script:
-
-  pacto-bot-admin new captain --backend nsec --relays ws://localhost:7000
-  pacto-bot-admin new candidate --backend nsec --relays ws://localhost:7000
-
-Then export the public keys (hex or npub) and run again:
-
-  export PACTO_SQUAD_CAPTAIN_NPUB=<captain-npub>
-  export PACTO_SQUAD_CANDIDATE_NPUB=<candidate-npub>
-  make seed-squad
-
-EOF
+  {
+    echo -e ""
+    echo -e "${YELLOW}Squad creation requires two Nostr identities:${NC}"
+    echo -e "  - PACTO_SQUAD_CAPTAIN_NPUB  (the squad captain)"
+    echo -e "  - PACTO_SQUAD_CANDIDATE_NPUB (a candidate crew member)"
+    echo -e ""
+    echo -e "Create them with pacto-bot-admin and re-run this script:"
+    echo -e ""
+    echo -e "  pacto-bot-admin new captain --backend nsec --relays ws://localhost:7000"
+    echo -e "  pacto-bot-admin new candidate --backend nsec --relays ws://localhost:7000"
+    echo -e ""
+    echo -e "Then export the public keys (hex or npub) and run again:"
+    echo -e ""
+    echo -e "  export PACTO_SQUAD_CAPTAIN_NPUB=<captain-npub>"
+    echo -e "  export PACTO_SQUAD_CANDIDATE_NPUB=<candidate-npub>"
+    echo -e "  make seed-squad"
+    echo -e ""
+  } >&2
 }
 
 # Validate that the sibling repo looks right.
