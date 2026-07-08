@@ -420,6 +420,23 @@ check_hats_and_members() {
       warn "candidate does not wear the crew hat yet"
     fi
   fi
+
+  # Artifact crew members (seeded by seed-squad.sh)
+  if [ -f "$SQUAD_ARTIFACT" ] && jq -e '.crewMembers' "$SQUAD_ARTIFACT" >/dev/null 2>&1; then
+    echo
+    echo "  Seeded crew members (from squad.json)"
+    local label addr
+    while IFS= read -r label; do
+      addr="${label##* }"
+      echo "    $label"
+      if is_wearer "$addr" "$QM_CREW_HAT_ID"; then
+        pass "$(echo "$label" | cut -d: -f1) wears the crew hat"
+      else
+        fail "$(echo "$label" | cut -d: -f1) does not wear the crew hat"
+      fi
+    done < <(jq -r '.crewMembers[] | "\(.bot_id // "explicit"): \(.address)"' "$SQUAD_ARTIFACT")
+  fi
+
   echo
 }
 

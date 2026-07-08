@@ -164,6 +164,12 @@ After the governance system is deployed, `make seed-squad` creates a new Nave
 Pirata squad on Anvil. The helper is **identity-aware**: it needs the public
 keys of a squad captain and a candidate crew member.
 
+By default it also creates **3 crew bot identities** (`crew-1`, `crew-2`,
+`crew-3`) with `pacto-bot-admin`, derives their Ethereum addresses from their
+nsec values, and bootstraps them on-chain so the squad is ready for treasury
+and mutiny tests. Configure this with `PACTO_SQUAD_CREW_COUNT`,
+`PACTO_SQUAD_CREW_BOT_IDS`, or `PACTO_SQUAD_CREW_ADDRESSES`.
+
 You can export them manually:
 
 ```bash
@@ -188,10 +194,29 @@ export PACTO_AUTO_CREATE_SQUAD_IDENTITIES=1
 make seed-squad
 ```
 
+To seed a different number of crew members, use specific bot ids, or skip
+crew bootstrap entirely:
+
+```bash
+# Add 5 crew bot identities (crew-1 ... crew-5) and bootstrap them
+PACTO_SQUAD_CREW_COUNT=5 make seed-squad
+
+# Use specific bot ids as crew members
+PACTO_SQUAD_CREW_BOT_IDS=crew-1,crew-2,candidate make seed-squad
+
+# Use explicit addresses instead of creating bot identities
+PACTO_SQUAD_CREW_ADDRESSES=0x...,0x... make seed-squad
+
+# Skip on-chain crew bootstrap entirely
+PACTO_SQUAD_CREW_COUNT=0 make seed-squad
+```
+
 If the required env vars are missing and you decline auto-creation,
 `make seed-squad` prints explicit `pacto-bot-admin new` instructions and exits
 with status 1 without deploying a dummy squad. The deployed squad artifact is
-written to `./data/deployments/31337/squad.json`.
+written to `./data/deployments/31337/squad.json`. The bootstrapped crew
+members are recorded under the `crewMembers` field (bot id, npub, and address;
+secrets are not written to the artifact).
 
 ### Verify the squad
 

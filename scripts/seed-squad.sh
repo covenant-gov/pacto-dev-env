@@ -16,6 +16,12 @@ set -euo pipefail
 #   ANVIL_PRIVATE_KEY    - deployer private key
 #                          (default: Anvil account #0)
 #   PACTO_SQUAD_METADATA_URI - metadata URI for the squad (default: ipfs://Qmdummy)
+#   PACTO_SQUAD_CREW_COUNT - number of crew bot identities to create and bootstrap
+#                          on-chain (default: 3; set to 0 to skip crew bootstrap)
+#   PACTO_SQUAD_CREW_BOT_IDS - comma-separated bot ids to use as crew members
+#                          (overrides PACTO_SQUAD_CREW_COUNT when set)
+#   PACTO_SQUAD_CREW_ADDRESSES - comma-separated ETH addresses to use as crew
+#                          (overrides bot identity creation when set)
 #   FORCE_SEED_SQUAD     - set to 1 to re-deploy when squad.json already exists
 #   PACTO_AUTO_CREATE_SQUAD_IDENTITIES - set to 1 to skip the prompt and create
 #                          the captain/candidate identities automatically
@@ -59,6 +65,14 @@ CANDIDATE_BOT_ID="${PACTO_SQUAD_CANDIDATE_BOT_ID:-candidate}"
 # to read them from the daemon config or create them on demand.
 PACTO_SQUAD_CAPTAIN_NPUB="${PACTO_SQUAD_CAPTAIN_NPUB:-}"
 PACTO_SQUAD_CANDIDATE_NPUB="${PACTO_SQUAD_CANDIDATE_NPUB:-}"
+
+# Crew onboarding: number of crew bot identities, optional explicit bot ids,
+# and optional explicit ETH addresses. When PACTO_SQUAD_CREW_ADDRESSES is empty,
+# the script creates crew bot identities with pacto-bot-admin and derives their
+# Ethereum addresses from their nsec values.
+PACTO_SQUAD_CREW_COUNT="${PACTO_SQUAD_CREW_COUNT:-3}"
+PACTO_SQUAD_CREW_BOT_IDS="${PACTO_SQUAD_CREW_BOT_IDS:-}"
+PACTO_SQUAD_CREW_ADDRESSES="${PACTO_SQUAD_CREW_ADDRESSES:-}"
 
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -106,14 +120,12 @@ bot_exists_in_config() {
 
 get_npub_from_config() {
   local bot_id="$1"
-  [ -f "$CONFIG_FILE" ] || return 0
-  awk -F'"' -v bot_id="$bot_id" '
-    /^\[\[/ { in_bots=0 }
-    /^\[\[bots\]\]/ { in_bots=1; id=""; npub="" }
-    in_bots && /^id = / { id=$2 }
-    in_bots && /^npub = / { npub=$2 }
-    in_bots && id == bot_id && npub != "" { print npub; exit }
-  ' "$CONFIG_FILE"
+  "$SCRIPT_DIR/get-bot-secret.py" "$CONFIG_FILE" "$bot_id" npub 2>/dev/null
+}
+
+get_nsec_from_config() {
+  local bot_id="$1"
+  "$SCRIPT_DIR/get-bot-secret.py" "$CONFIG_FILE" "$bot_id" nsec 2>/dev/null
 }
 
 ensure_config_exists() {
@@ -246,6 +258,172 @@ ensure_squad_identities() {
   export PACTO_SQUAD_CAPTAIN_NPUB PACTO_SQUAD_CANDIDATE_NPUB
 }
 
+# Derive an Ethereum address from a Nostr nsec using the local helper.
+# This matches the covenant-gov/nostr-k-derivs derivation: the Nostr private
+# key is used directly as the Ethereum private key.
+derive_address_from_nsec() {
+  local nsec="$1"
+  "$SCRIPT_DIR/derive-eth-address.py" "$nsec"
+}
+
+# Build a JSON array of crew member objects from explicit addresses.
+build_explicit_crew_json() {
+  local addresses=("$@")
+  local items=""
+  for addr in "${addresses[@]}"; do
+    if [ -n "$items" ]; then items="$items,"; fi
+    items="$items{\"address\":\"$addr\"}"
+  done
+  echo "[$items]"
+}
+
+# Resolve the list of crew members.
+#
+# Priority:
+#   1. PACTO_SQUAD_CREW_ADDRESSES - use these explicit ETH addresses, no bots.
+#   2. PACTO_SQUAD_CREW_BOT_IDS   - use these bot ids (create if missing).
+#   3. PACTO_SQUAD_CREW_COUNT     - create crew-1 .. crew-N bot ids.
+#
+# Populates CREW_MEMBERS_JSON with objects [{bot_id, npub, nsec, address}, ...]
+# or [{address}, ...] when explicit addresses are provided.
+resolve_crew_members() {
+  CREW_MEMBERS_JSON="[]"
+
+  if [ -n "${PACTO_SQUAD_CREW_ADDRESSES:-}" ]; then
+    local IFS=','
+    local raw
+    read -r -a raw <<< "$PACTO_SQUAD_CREW_ADDRESSES"
+    local addresses=()
+    for entry in "${raw[@]}"; do
+      entry="$(printf '%s' "$entry" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+      if [ -n "$entry" ]; then
+        addresses+=("$entry")
+      fi
+    done
+    CREW_MEMBERS_JSON="$(build_explicit_crew_json "${addresses[@]}")"
+    return
+  fi
+
+  local bot_ids=()
+  if [ -n "${PACTO_SQUAD_CREW_BOT_IDS:-}" ]; then
+    local IFS=','
+    local raw
+    read -r -a raw <<< "$PACTO_SQUAD_CREW_BOT_IDS"
+    for entry in "${raw[@]}"; do
+      entry="$(printf '%s' "$entry" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+      if [ -n "$entry" ]; then
+        bot_ids+=("$entry")
+      fi
+    done
+  else
+    local count
+    count="${PACTO_SQUAD_CREW_COUNT:-0}"
+    if ! [[ "$count" =~ ^[0-9]+$ ]]; then
+      err "PACTO_SQUAD_CREW_COUNT must be a non-negative integer (got: $count)"
+      exit 1
+    fi
+    if [ "$count" -gt 100 ]; then
+      err "PACTO_SQUAD_CREW_COUNT is too large (>100)"
+      exit 1
+    fi
+    local i
+    for i in $(seq 1 "$count"); do
+      bot_ids+=("crew-$i")
+    done
+  fi
+
+  if [ "${#bot_ids[@]}" -eq 0 ]; then
+    return
+  fi
+
+  ensure_config_exists
+  local changed=0
+  for bot_id in "${bot_ids[@]}"; do
+    if bot_exists_in_config "$bot_id"; then
+      echo "Reusing existing crew identity '$bot_id' from $CONFIG_FILE."
+    else
+      create_identity_in_container "$bot_id"
+      changed=1
+    fi
+  done
+  if [ "$changed" -eq 1 ]; then
+    restart_pacto_bot_api
+  fi
+
+  CREW_MEMBERS_JSON="[]"
+  for bot_id in "${bot_ids[@]}"; do
+    local npub nsec address
+    npub="$(get_npub_from_config "$bot_id")"
+    nsec="$(get_nsec_from_config "$bot_id")"
+    if [ -z "$nsec" ]; then
+      err "Could not read nsec for crew identity '$bot_id' from $CONFIG_FILE"
+      exit 1
+    fi
+    address="$(derive_address_from_nsec "$nsec")"
+    CREW_MEMBERS_JSON="$(jq \
+      --arg id "$bot_id" \
+      --arg npub "$npub" \
+      --arg nsec "$nsec" \
+      --arg addr "$address" \
+      '. + [{bot_id: $id, npub: $npub, nsec: $nsec, address: $addr}]' \
+      <<< "$CREW_MEMBERS_JSON")"
+  done
+}
+
+# Bootstrap the initial crew members via Quartermaster.bootstrapCrew.
+# This only works while the crew hat has zero wearers, so it is a one-shot
+# seeding helper. Caller must ensure CREW_MEMBERS_JSON is populated.
+bootstrap_crew() {
+  local quartermaster="$1"
+  local count
+  count="$(jq 'length' <<< "$CREW_MEMBERS_JSON")"
+
+  if [ "$count" -eq 0 ]; then
+    echo "No crew members configured; skipping on-chain crew bootstrap."
+    return
+  fi
+
+  echo "Bootstrapping $count crew member(s) on Quartermaster $quartermaster..."
+  local addr_list
+  addr_list="$(jq -r '[.[].address] | join(",")' <<< "$CREW_MEMBERS_JSON")"
+  local array_arg="[${addr_list}]"
+
+  cast send "$quartermaster" "bootstrapCrew(address[])" "$array_arg" \
+    --private-key "$ANVIL_PRIVATE_KEY" \
+    --rpc-url "$ANVIL_RPC_URL" \
+    --confirmations 1
+}
+
+# Append the crew member list to the squad artifact as a post-deployment
+# convenience field. The Solidity script does not write this field. Secrets
+# (nsec) are stripped before writing.
+append_crew_to_artifact() {
+  local artifact="$1"
+  local tmp
+  tmp=$(mktemp)
+  local public_members
+  public_members="$(jq '[.[] | {bot_id, npub, address} | with_entries(select(.value != null))]' <<< "$CREW_MEMBERS_JSON")"
+  jq --argjson crew "$public_members" \
+    '. + {crewMembers: $crew}' "$artifact" > "$tmp"
+
+  if mv "$tmp" "$artifact" 2>/dev/null; then
+    return 0
+  fi
+
+  # The artifact may be owned by the container user; copy through the anvil
+  # image so the destination permissions do not block the update.
+  echo "[seed-squad] Host mv failed; updating artifact through the pacto-anvil container as root..."
+  local dst_dir
+  dst_dir="$(dirname "$artifact")"
+  docker run --rm \
+    -v "$tmp:/src/crew-squad.json:ro" \
+    -v "$dst_dir:/dst" \
+    --entrypoint cp \
+    pacto-anvil:local \
+    /src/crew-squad.json "/dst/$(basename "$artifact")"
+  rm -f "$tmp"
+}
+
 # Validate that the sibling repo looks right.
 if [ ! -f "$PACTO_GOV_DIR/script/DeployNavePirata.s.sol" ]; then
   err "$PACTO_GOV_DIR does not look like the pacto-gov repository (missing script/DeployNavePirata.s.sol)"
@@ -367,6 +545,21 @@ if [ -z "$SQUAD_FILE" ] || [ ! -f "$SQUAD_FILE" ]; then
 fi
 
 copy_artifact_with_docker "$SQUAD_FILE" "$SQUAD_ARTIFACT"
+
+# Resolve and bootstrap the initial crew members. We do this after the
+# artifact is copied because the Quartermaster address is required.
+resolve_crew_members
+QUARTERMASTER_ADDRESS="$(jq -r '.quartermaster' "$SQUAD_ARTIFACT")"
+if [ -n "$QUARTERMASTER_ADDRESS" ] && [ "$QUARTERMASTER_ADDRESS" != "null" ]; then
+  bootstrap_crew "$QUARTERMASTER_ADDRESS"
+  append_crew_to_artifact "$SQUAD_ARTIFACT"
+else
+  err "Quartermaster address missing from squad artifact; cannot bootstrap crew."
+  exit 1
+fi
+
 echo "Squad deployment complete."
 echo "Artifact: $SQUAD_ARTIFACT"
+echo "Crew members:"
+jq -r '.crewMembers[] | "  - \(.bot_id // "explicit"): \(.address)"' "$SQUAD_ARTIFACT" 2>/dev/null || true
 jq . "$SQUAD_ARTIFACT" 2>/dev/null || true

@@ -23,7 +23,7 @@ up-all: config ensure-sibling-repos ## Start the full stack (default + aztec + b
 seed: ensure-sibling-repos ## Deploy Pacto governance contracts to Anvil (one-shot)
 	docker compose --profile seed run --rm seed
 
-seed-squad: ## Deploy a Nave Pirata squad to Anvil (requires PACTO_SQUAD_* env vars)
+seed-squad: ## Deploy a Nave Pirata squad to Anvil (identities + on-chain crew bootstrap)
 	@./scripts/seed-squad.sh
 
 dev: ## One-shot: pull images, start default stack, optional dev bot, seed contracts, print next steps
