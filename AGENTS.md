@@ -67,7 +67,7 @@ make up-all      # default stack + aztec + bunker + seed
 
 ### Verify the stack
 
-`make check` runs `make check-env` (host tool verification) followed by the running-service health checks. `make check-env` only checks the host environment and prints remediation steps for missing tools (for example, run `setup-macos-arm64.sh` or `setup-ubuntu-lts.sh`).
+`make check` runs `make check-env` (host tool verification) followed by the running-service health checks, and reports the versions of anvil, nostra (nostr-relay), and pacto-bot-api. `make check-env` only checks the host environment and prints remediation steps for missing tools (for example, run `setup-macos-arm64.sh` or `setup-ubuntu-lts.sh`).
 
 ### Optional profiles
 

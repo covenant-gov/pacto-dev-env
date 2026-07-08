@@ -231,7 +231,7 @@ Run the automated health check:
 make check
 ```
 
-`make check` first verifies that the host has the required tools installed (Docker, Rust, Foundry, pnpm, jq, socat, websocat, etc.). If anything is missing, it prints the remediation step for your platform (run `setup-macos-arm64.sh` or `setup-ubuntu-lts.sh`). It then verifies that the running Docker Compose services are healthy and reachable.
+`make check` first verifies that the host has the required tools installed (Docker, Rust, Foundry, pnpm, jq, socat, websocat, etc.). If anything is missing, it prints the remediation step for your platform (run `setup-macos-arm64.sh` or `setup-ubuntu-lts.sh`). It then verifies that the running Docker Compose services are healthy and reachable, and reports the versions of anvil, nostra, and pacto-bot-api.
 
 To check only the host environment:
 
