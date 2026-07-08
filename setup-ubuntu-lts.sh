@@ -25,7 +25,7 @@ command_exists() { command -v "$1" >/dev/null 2>&1; }
 eval_brew_shellenv() {
   if [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
     eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" 2>/dev/null || true
-  elif [[ -x "$HOME/.linuxbrew/bin/brew ]]; then
+  elif [[ -x "$HOME/.linuxbrew/bin/brew" ]]; then
     eval "$($HOME/.linuxbrew/bin/brew shellenv)" 2>/dev/null || true
   fi
 }
