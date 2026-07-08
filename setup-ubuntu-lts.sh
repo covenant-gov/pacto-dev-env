@@ -301,6 +301,18 @@ install_gh_cli() {
   brew install gh
 }
 
+install_shellcheck() {
+  eval_brew_shellenv
+
+  if command_exists shellcheck; then
+    log "ShellCheck already installed: $(shellcheck --version | head -1)"
+    return 0
+  fi
+
+  log "Installing ShellCheck via Homebrew..."
+  brew install shellcheck
+}
+
 # ---------------------------------------------------------------------------
 # Shell environment
 # ---------------------------------------------------------------------------
@@ -475,6 +487,7 @@ verify_install() {
   jq --version
   socat -V | head -1
   websocat --version | head -1
+  shellcheck --version | head -1
   if command_exists aztec-sandbox; then
     aztec-sandbox --version
   else
@@ -506,6 +519,7 @@ main() {
   install_aztec_cli
   install_brew
   install_gh_cli
+  install_shellcheck
   configure_shell
   clone_repos "${1:-}"
   verify_install

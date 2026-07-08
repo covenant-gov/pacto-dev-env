@@ -41,7 +41,7 @@ install_homebrew() {
 install_base_tools() {
   log "Updating Homebrew and installing base tools..."
   brew update
-  brew install git curl wget jq coreutils pkg-config cmake llvm rustup node pnpm socat websocat
+  brew install git curl wget jq coreutils pkg-config cmake llvm rustup node pnpm socat websocat shellcheck
 
   # Docker Desktop must be installed manually or via Homebrew Cask
   if ! command -v docker >/dev/null 2>&1; then
@@ -175,6 +175,7 @@ verify_install() {
   jq --version
   socat -V | head -1
   websocat --version | head -1
+  shellcheck --version | head -1
   if command -v aztec-sandbox >/dev/null 2>&1; then
     aztec-sandbox --version
   else
