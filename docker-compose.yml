@@ -269,4 +269,5 @@ networks:
 
 volumes:
   pacto-bot-api-data:
+    name: pacto-bot-api-data
   caddy-data:

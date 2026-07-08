@@ -289,12 +289,12 @@ services:
     networks:
       - pacto
     volumes:
-      - pacto-bot-api-data:/run/pacto:ro
+      - pacto-bot-api-data:/var/lib/pacto-bot-api:ro
     environment:
       PACTO_GOVERNANCE_RPC_URL: http://anvil:8545
       PACTO_GOVERNANCE_DAEMON_SOCKET: /var/lib/pacto-bot-api/pacto-bot-api.sock
       PACTO_GOVERNANCE_GROUP_ID: local-dev-squad
-
+```
 networks:
   pacto:
     external: true
@@ -313,9 +313,9 @@ data_dir = "/var/lib/pacto-bot-api"
 socket_path = "/var/lib/pacto-bot-api/pacto-bot-api.sock"
 ```
 
-If a sibling repo needs a different mount point inside its own container
-(for example `/run/pacto/pacto-bot-api.sock`), use a symlink or a bind mount
-at startup; do not silently change the daemon's socket path.
+If a sibling repo needs a different mount point inside its own container,
+use a symlink or a bind mount at startup; do not silently change the daemon's
+socket path.
 
 ---
 

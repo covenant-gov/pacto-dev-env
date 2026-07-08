@@ -135,7 +135,6 @@ Profiles keep heavy or optional services opt-in.
 |---|---|---|
 | (none) | `nostr-relay`, `anvil`, `pacto-bot-api` | Default bot/contract development |
 | `seed` | One-shot governance contract deployer | Populate Anvil with Pacto contracts |
-| `seed-squad` | Host-side `scripts/seed-squad.sh` | Deploy a Nave Pirata squad after `seed` |
 | `aztec` | `aztec-sandbox` | Working on `pacto-aztec` |
 | `bunker` | `nip46-bunker`, `nip46-bunker-db`, `nip46-bunker-redis` | Remote-signing tests |
 | `full` | `aztec` + `bunker` + `seed` | Run the whole stack |
@@ -170,12 +169,12 @@ services:
     networks:
       - pacto
     volumes:
-      - pacto-bot-api-data:/run/pacto:ro
+      - pacto-bot-api-data:/var/lib/pacto-bot-api:ro
     environment:
       PACTO_GOVERNANCE_RPC_URL: http://anvil:8545
       PACTO_GOVERNANCE_DAEMON_SOCKET: /var/lib/pacto-bot-api/pacto-bot-api.sock
       PACTO_GOVERNANCE_GROUP_ID: local-dev-squad
-
+```
 networks:
   pacto:
     external: true

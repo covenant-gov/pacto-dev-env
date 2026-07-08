@@ -19,6 +19,15 @@ set -euo pipefail
 CONFIG_FILE="pacto-bot-api.toml"
 CREATED=0
 
+# If a sibling .env exists (e.g. for the bunker/full profiles), load it so
+# host-side `make config` can see PACTO_CREATE_DEV_BOT / PACTO_BOT_* vars.
+if [ -f ".env" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  . ".env"
+  set +a
+fi
+
 if [ -d "$CONFIG_FILE" ]; then
   # Docker Compose creates this as a directory when the file is missing and a
   # host mount is declared. Remove the bogus directory so we can create a file.

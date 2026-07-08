@@ -25,6 +25,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PACTO_GOV_DIR="${PACTO_GOV_DIR:-$REPO_ROOT/../pacto-gov}"
+if [ ! -d "$PACTO_GOV_DIR" ]; then
+  err "PACTO_GOV_DIR does not exist: $PACTO_GOV_DIR"
+  exit 1
+fi
 PACTO_GOV_DIR="$(cd "$PACTO_GOV_DIR" && pwd)"
 ANVIL_RPC_URL="${ANVIL_RPC_URL:-http://localhost:8545}"
 ANVIL_PRIVATE_KEY="${ANVIL_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
@@ -99,11 +103,9 @@ if [ "$FORCE_SEED_SQUAD" != "1" ] && [ -f "$SQUAD_ARTIFACT" ]; then
   exit 0
 fi
 
-# Convert bech32 npub to hex if necessary. pacto-bot-admin typically outputs npub,
-# but the deploy script accepts an Ethereum address as the captain. For a dev
-# squad we use the deployer address itself as the captain; the public keys are
-# only required here to enforce identity-aware setup and can be consumed by a
-# future env generator in pacto-governance-bots.
+# For a dev squad we use the deployer address itself as the captain.
+# The PACTO_SQUAD_*_NPUB env vars are required to enforce identity-aware
+# setup and can be consumed by a future env generator in pacto-governance-bots.
 CAPTAIN_ADDRESS="$(cast wallet address --private-key "$ANVIL_PRIVATE_KEY")"
 
 NAVE_PIRATA_FACTORY="$(jq -r '.navePirataFactory' "$FULL_SYSTEM_ARTIFACT")"
@@ -142,7 +144,12 @@ echo "  metadata: $SQUAD_METADATA_URI"
 
 # The forge script writes squad-<saltNonce>.json. Find the newest one and copy
 # it to the canonical squad.json path.
-SQUAD_FILE="$(ls -t "$PACTO_GOV_DIR/deployments/31337"/squad-*.json 2>/dev/null | head -n1)"
+SQUAD_FILE=""
+for f in "$PACTO_GOV_DIR/deployments/31337"/squad-*.json; do
+  if [ -f "$f" ] && { [ -z "$SQUAD_FILE" ] || [ "$f" -nt "$SQUAD_FILE" ]; }; then
+    SQUAD_FILE="$f"
+  fi
+done
 if [ -z "$SQUAD_FILE" ] || [ ! -f "$SQUAD_FILE" ]; then
   err "Expected squad deployment artifact not found under $PACTO_GOV_DIR/deployments/31337/"
   exit 1
