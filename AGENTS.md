@@ -59,11 +59,13 @@ chmod 600 pacto-bot-api.toml
 
 make up          # default stack: relay + anvil + pacto-bot-api
 make up-all      # default stack + aztec + bunker + seed
+make reseed      # reset, restart, and re-deploy governance contracts
+make reseed-all  # reset, restart, deploy contracts, and seed a squad
 ```
 
 `make up` is equivalent to `docker compose up -d --build`. The `nostr-relay` image is pulled from GHCR; `anvil` is built locally on first run because its GHCR image is not yet available.
 
-`make up-all` and `make seed` automatically run `scripts/ensure-sibling-repos.sh`, which checks for the sibling `pacto-gov` repository and its Node dependencies. If either is missing, the script interactively offers to clone the repo and run `pnpm install`. In non-interactive environments, use `make up-all YES=1` to allow automatic cloning and installation.
+`make up-all` and `make seed` automatically run `scripts/ensure-sibling-repos.sh`, which checks for the sibling `pacto-gov` repository and its Node dependencies. If either is missing, the script interactively offers to clone the repo and run `pnpm install`. In non-interactive environments, use `make up-all YES=1` to allow automatic cloning and installation. `make seed` is idempotent and detects stale deployment artifacts: if the recorded `NavePirataFactory` is no longer live on Anvil (for example, after the chain was reset), it re-deploys automatically instead of failing silently.
 
 ### Verify the stack
 

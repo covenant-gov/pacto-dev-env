@@ -16,10 +16,48 @@ fi
 DEPLOYMENTS_DIR="$PACTO_GOV_DIR/deployments/31337"
 ARTIFACT="$DEPLOYMENTS_DIR/full-system.json"
 
+# Extract a string field from the pretty-printed JSON artifact without requiring jq.
+_json_string_field() {
+  local file="$1"
+  local key="$2"
+  awk -F'"' "/\"$key\"/ {print \$4; exit}" "$file"
+}
+
+# Returns 0 if the NavePirataFactory at the recorded address is alive and
+# wired to the expected registry, non-zero otherwise.
+_factory_is_live() {
+  local factory_addr="$1"
+  local expected_registry="$2"
+
+  if [ -z "$factory_addr" ] || [ "$factory_addr" = "null" ] || [ "$factory_addr" = "0x0000000000000000000000000000000000000000" ]; then
+    return 1
+  fi
+
+  if [ -z "$expected_registry" ] || [ "$expected_registry" = "null" ] || [ "$expected_registry" = "0x0000000000000000000000000000000000000000" ]; then
+    return 1
+  fi
+
+  local registry_addr
+  registry_addr="$(cast call "$factory_addr" "REGISTRY()" --rpc-url "$ANVIL_RPC_URL" 2>/dev/null | tr -d '\n')" || return 1
+  # cast returns the ABI-encoded address (0x-padded to 32 bytes); extract the actual address.
+  registry_addr="0x${registry_addr: -40}"
+
+  if [ "$(echo "$registry_addr" | tr '[:upper:]' '[:lower:]')" != "$(echo "$expected_registry" | tr '[:upper:]' '[:lower:]')" ]; then
+    return 1
+  fi
+
+  return 0
+}
+
 if [ "$FORCE_SEED" != "1" ] && [ -f "$ARTIFACT" ]; then
-  echo "Deployment artifact already exists: $ARTIFACT"
-  echo "Run with FORCE_SEED=1 to re-deploy, or run 'make reset' to clear state."
-  exit 0
+  NAVE_PIRATA_FACTORY="$(_json_string_field "$ARTIFACT" navePirataFactory)"
+  NAVE_PIRATA_REGISTRY="$(_json_string_field "$ARTIFACT" navePirataRegistry)"
+  if _factory_is_live "$NAVE_PIRATA_FACTORY" "$NAVE_PIRATA_REGISTRY"; then
+    echo "Deployment artifact up to date: $ARTIFACT"
+    exit 0
+  fi
+  echo "Deployment artifact is stale: factory at $NAVE_PIRATA_FACTORY is not deployed on the current chain."
+  echo "Re-deploying Pacto governance contracts..."
 fi
 
 echo "Waiting for Anvil at $ANVIL_RPC_URL..."
@@ -48,5 +86,5 @@ forge script script/Deploy.sol \
 echo "Deployment complete. Artifacts written to $DEPLOYMENTS_DIR/"
 if [ -f "$ARTIFACT" ]; then
   echo "Full-system artifact: $ARTIFACT"
-  jq -r '"registry: \(.navePirataRegistry), hats: \(.hats)"' "$ARTIFACT" 2>/dev/null || true
+  echo "registry: $(_json_string_field "$ARTIFACT" navePirataRegistry), hats: $(_json_string_field "$ARTIFACT" hats)"
 fi

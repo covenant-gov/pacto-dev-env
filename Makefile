@@ -6,7 +6,7 @@
 # Generate real bunker secrets in `.env` before using the `bunker` or `full`
 # profiles. See `.env.example` for the template.
 
-.PHONY: help up up-all down seed seed-squad pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad
+.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad
 
 help: ## Show this help message and all available targets
 	@awk 'BEGIN {FS = ":.*?##"; printf "\nPacto local development environment commands:\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -25,6 +25,10 @@ seed: ensure-sibling-repos ## Deploy Pacto governance contracts to Anvil (one-sh
 
 seed-squad: ## Deploy a Nave Pirata squad to Anvil (identities + on-chain crew bootstrap)
 	@./scripts/seed-squad.sh
+
+reseed: reset up seed ## Reset, restart the default stack, and re-deploy Pacto governance contracts
+
+reseed-all: reset up seed seed-squad ## Reset, restart, deploy contracts, and seed a Nave Pirata squad
 
 dev: ## One-shot: pull images, start default stack, optional dev bot, seed contracts, print next steps
 	@$(MAKE) pull
@@ -65,9 +69,10 @@ pull: ## Pull prebuilt images for relay, aztec, bunker, and backing services
 build-anvil: ## Build the local Anvil/Foundry image
 	docker compose build anvil
 
-reset: ## Stop all services and remove containers, networks, and data volumes
+reset: ## Stop all services, remove containers/volumes, and clear local deployment artifacts
 	docker compose --profile full --profile aztec --profile bunker --profile seed --profile debug down -v --remove-orphans
 	rm -rf ./data 2>/dev/null || docker run --rm -v "$(CURDIR):/host" --workdir /host alpine:latest rm -rf ./data
+	rm -rf ../pacto-gov/deployments/31337 2>/dev/null || true
 
 logs: ## Follow logs for all running services
 	docker compose logs -f

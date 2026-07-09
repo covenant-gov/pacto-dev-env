@@ -154,9 +154,13 @@ Useful fields:
 The `seed` service is also included in the `full` profile, so `make up-all`
 deploys the contracts automatically while starting the optional services.
 
-`make seed` is idempotent: if `full-system.json` already exists, the service
-prints the existing artifact path and exits. Set `FORCE_SEED=1` to re-deploy,
-or run `make reset` to clear all state and start over.
+`make seed` is idempotent: if `full-system.json` already exists and the
+recorded factory is still live on Anvil, the service prints the existing
+artifact path and exits. If the factory is missing (for example, after Anvil
+was reset), it automatically re-deploys instead of failing silently. Set
+`FORCE_SEED=1` to always re-deploy, or run `make reset` to clear all state
+and start over. For a one-command reset + re-deploy, use `make reseed`;
+use `make reseed-all` to also seed a Nave Pirata squad afterwards.
 
 ### Seed a Nave Pirata squad
 
@@ -213,7 +217,10 @@ PACTO_SQUAD_CREW_COUNT=0 make seed-squad
 
 If the required env vars are missing and you decline auto-creation,
 `make seed-squad` prints explicit `pacto-bot-admin new` instructions and exits
-with status 1 without deploying a dummy squad. The deployed squad artifact is
+with status 1 without deploying a dummy squad. It also validates that the
+Pacto infrastructure is still deployed on Anvil; if the chain has been reset,
+run `make seed` first, or use `make reseed-all` to reset, re-deploy, and seed
+a squad in one command. The deployed squad artifact is
 written to `./data/deployments/31337/squad.json`. The bootstrapped crew
 members are recorded under the `crewMembers` field (bot id, npub, and address;
 secrets are not written to the artifact).
