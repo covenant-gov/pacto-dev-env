@@ -33,7 +33,7 @@ graph TD
       direction TB
       Relay[nostr-relay<br/>ws://localhost:7000<br/>wss://localhost:7001]
       Caddy[caddy<br/>wss://localhost:7001]
-      Anvil[anvil<br/>http://localhost:8545]
+      Anvil[anvil<br/>http://localhost:8545<br/>https://localhost:8546]
       Daemon[pacto-bot-api<br/>Unix socket in volume]
       Seed[seed<br/>one-shot deployer]
       Aztec[aztec-sandbox<br/>profile: aztec]
@@ -48,21 +48,27 @@ graph TD
     Anvil -->|L1 RPC| Aztec
     Seed -->|forge script| Anvil
     Caddy -->|ws://| Relay
+    Caddy -->|https://| Anvil
     AppCompose[sibling app compose] -->|external network + shared volumes| Docker
 ```
 
 All services share a Docker bridge network named `pacto` so sibling composes can reach them by service name. The default stack always starts `nostr-relay`, `anvil`, and `pacto-bot-api`. Optional services are gated by Compose profiles.
 
-### Nostr relay TLS
+### Nostr relay and Anvil TLS
 
-A `caddy` sidecar is part of the default stack and exposes `wss://localhost:7001` on the host. It terminates TLS with a Caddy-generated self-signed certificate and proxies plain `ws://` to `nostr-relay:8080`. Clients must either skip certificate verification or run `scripts/generate-local-certs.sh` (requires `mkcert`) to produce a locally-trusted certificate.
+A `caddy` sidecar is part of the default stack and exposes two TLS endpoints on the host:
+
+- `wss://localhost:7001` proxies plain `ws://` to `nostr-relay:8080`.
+- `https://localhost:8546` proxies `http://` to `anvil:8545`.
+
+`make up` and `make up-all` run `scripts/generate-local-certs.sh` automatically. If `mkcert` is installed (the setup scripts install it), Caddy uses a locally-trusted certificate. If `mkcert` is not available, Caddy falls back to its internal self-signed CA; clients must then skip certificate verification. To trust the mkcert CA in browsers, run `mkcert -install` once after the certificates are generated.
 
 ## Services
 
 | Service | Default | Profile | Purpose | Image source |
 |---|---|---|---|---|
 | `nostr-relay` | yes | — | Nostr relay for DM/MLS testing | `ghcr.io/covenant-gov/pacto-dev-env/nostr-relay:main` |
-| `caddy` | yes | — | TLS sidecar for `wss://localhost:7001` | `caddy:2-alpine` |
+| `caddy` | yes | — | TLS sidecar for `wss://localhost:7001` and `https://localhost:8546` | `caddy:2-alpine` |
 | `anvil` | yes | — | Local EVM testnet, chain ID 31337 | built locally from `docker/anvil.Dockerfile` |
 | `pacto-bot-api` | yes | — | Daemon that bot handlers connect to | `ghcr.io/covenant-gov/pacto-bot-api:latest` |
 | `seed` | no | `seed`, `full` | Deploys Pacto governance contracts to Anvil | `pacto-anvil:local` (one-shot) |
@@ -96,9 +102,11 @@ make up          # default stack: relay + anvil + pacto-bot-api
 make up-all      # default stack + aztec + bunker + seed
 make seed        # run the seed deployer on its own
 make seed-squad  # deploy a Nave Pirata squad (requires captain/candidate env vars)
+make reseed      # reset, restart, and re-deploy governance contracts
+make reseed-all  # reset, restart, deploy contracts, and seed a squad
 make dev         # pull + up + optional dev-bot + printed next steps
 make down        # stop everything across all profiles
-make reset       # stop everything and delete ./data
+make reset       # stop everything, delete ./data, and clear local deployment artifacts
 ```
 
 Under the hood:
@@ -112,6 +120,8 @@ Under the hood:
    - `aztec-sandbox` waits for `anvil` to be healthy.
    - `nip46-bunker` waits for its DB and Redis to be healthy.
 6. When the `seed` profile is active, the one-shot `seed` service runs after `anvil` is healthy and writes `./data/deployments/31337/full-system.json`.
+
+`make seed` is idempotent and self-healing: if `full-system.json` exists and the recorded `NavePirataFactory` is still live on Anvil, the service exits; if the factory is missing (for example, after Anvil was reset), it re-deploys automatically. Set `FORCE_SEED=1` to always re-deploy, or use `make reseed` / `make reseed-all` for a one-command reset and reseed.
 
 ### Required operator setup before `make up`
 
@@ -156,6 +166,7 @@ After `make seed` has produced `./data/deployments/31337/full-system.json`,
   `PACTO_AUTO_CREATE_SQUAD_IDENTITIES=1` to skip the prompt.
 - If they are missing and you decline auto-creation, the script prints
   `pacto-bot-admin new` instructions and exits 1.
+- `make seed-squad` validates that the Pacto infrastructure is still deployed on Anvil; if the chain has been reset, run `make seed` first, or use `make reseed-all`.
 - On success it writes `./data/deployments/31337/squad.json`.
 - The captain address is the deployer address (Anvil account #0) for local dev;
   the public-key env vars are captured here so a sibling repo's env generator can
@@ -194,6 +205,7 @@ Inside the attached container, use service names instead of `localhost`:
 - `http://anvil:8545` for the EVM RPC
 - `ws://nostr-relay:8080` for the Nostr relay
 - `wss://caddy:8443` for the Nostr relay over TLS from inside the Docker network
+- `https://caddy:8444` for the Anvil EVM RPC over TLS from inside the Docker network
 - `/var/lib/pacto-bot-api/pacto-bot-api.sock` for the daemon socket (via the shared volume)
 - `http://aztec-sandbox:8080` for Aztec RPC
 - `http://nip46-bunker:3000` for the bunker

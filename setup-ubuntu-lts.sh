@@ -81,6 +81,9 @@ install_system_packages() {
     socat
     jq
     netcat-openbsd
+    # Local TLS certificate generation
+    mkcert
+    libnss3-tools
     # Tauri / desktop deps
     libvulkan-dev
     libwebkit2gtk-4.1-dev

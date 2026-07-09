@@ -81,6 +81,32 @@ NC='\033[0m'
 err() { echo -e "${RED}[seed-squad]${NC} $*" >&2; }
 warn() { echo -e "${YELLOW}[seed-squad]${NC} $*"; }
 
+# Returns 0 if the NavePirataFactory at the recorded address is alive and
+# wired to the expected registry, non-zero otherwise.
+_factory_is_live() {
+  local factory_addr="$1"
+  local expected_registry="$2"
+
+  if [ -z "$factory_addr" ] || [ "$factory_addr" = "null" ] || [ "$factory_addr" = "0x0000000000000000000000000000000000000000" ]; then
+    return 1
+  fi
+
+  if [ -z "$expected_registry" ] || [ "$expected_registry" = "null" ] || [ "$expected_registry" = "0x0000000000000000000000000000000000000000" ]; then
+    return 1
+  fi
+
+  local registry_addr
+  registry_addr="$(cast call "$factory_addr" "REGISTRY()" --rpc-url "$ANVIL_RPC_URL" 2>/dev/null | tr -d '\n')" || return 1
+  # cast returns the ABI-encoded address (0x-padded to 32 bytes); extract the actual address.
+  registry_addr="0x${registry_addr: -40}"
+
+  if [ "$(echo "$registry_addr" | tr '[:upper:]' '[:lower:]')" != "$(echo "$expected_registry" | tr '[:upper:]' '[:lower:]')" ]; then
+    return 1
+  fi
+
+  return 0
+}
+
 require_env() {
   local name="$1"
   local value="${!name:-}"
@@ -462,6 +488,13 @@ CAPTAIN_ADDRESS="$(cast wallet address --private-key "$ANVIL_PRIVATE_KEY")"
 NAVE_PIRATA_FACTORY="$(jq -r '.navePirataFactory' "$FULL_SYSTEM_ARTIFACT")"
 if [ -z "$NAVE_PIRATA_FACTORY" ] || [ "$NAVE_PIRATA_FACTORY" = "null" ]; then
   err "navePirataFactory address not found in $FULL_SYSTEM_ARTIFACT"
+  exit 1
+fi
+
+NAVE_PIRATA_REGISTRY="$(jq -r '.navePirataRegistry' "$FULL_SYSTEM_ARTIFACT")"
+if ! _factory_is_live "$NAVE_PIRATA_FACTORY" "$NAVE_PIRATA_REGISTRY"; then
+  err "NavePirataFactory at $NAVE_PIRATA_FACTORY is not deployed on Anvil (chain may have been reset)."
+  err "Run 'make seed' or 'FORCE_SEED=1 make seed' to redeploy the Pacto infrastructure, then retry 'make seed-squad'."
   exit 1
 fi
 

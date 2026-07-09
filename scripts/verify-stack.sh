@@ -69,6 +69,12 @@ check_anvil() {
     else
       fail "anvil RPC is not responding on http://localhost:8545"
     fi
+
+    if cast block-number --rpc-url https://localhost:8546 --insecure >/dev/null 2>&1; then
+      pass "anvil RPC responds over HTTPS on https://localhost:8546"
+    else
+      fail "anvil RPC is not responding over HTTPS on https://localhost:8546"
+    fi
   else
     warn "cast not found in PATH; skipping RPC probe"
   fi
