@@ -54,8 +54,11 @@ services:
   # Pacto bot API daemon. Generate `pacto-bot-api.toml` with
   # `pacto-bot-admin` first; see `pacto-bot-api.toml.example`.
   pacto-bot-api:
+    build:
+      context: ../pacto-bot-api
+      dockerfile: Dockerfile
     image: ghcr.io/covenant-gov/pacto-bot-api:main
-    pull_policy: always
+    pull_policy: if_not_present
     environment:
       PACTO_DATA_DIR: /var/lib/pacto-bot-api
       PACTO_RELAY_URL: ws://nostr-relay:8080
@@ -71,6 +74,7 @@ services:
     volumes:
       - pacto-bot-api-data:/var/lib/pacto-bot-api
       - ./pacto-bot-api.toml:/etc/pacto/pacto-bot-api.toml:ro
+      - ./data/deployments:/data/deployments
     networks:
       - pacto
     depends_on:
