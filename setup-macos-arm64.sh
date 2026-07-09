@@ -41,7 +41,7 @@ install_homebrew() {
 install_base_tools() {
   log "Updating Homebrew and installing base tools..."
   brew update
-  brew install git curl wget jq coreutils pkg-config cmake llvm rustup node pnpm socat websocat shellcheck
+  brew install git curl wget jq coreutils pkg-config cmake llvm rustup node pnpm socat websocat shellcheck mkcert
 
   # Docker Desktop must be installed manually or via Homebrew Cask
   if ! command -v docker >/dev/null 2>&1; then

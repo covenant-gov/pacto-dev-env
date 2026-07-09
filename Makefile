@@ -11,13 +11,16 @@
 help: ## Show this help message and all available targets
 	@awk 'BEGIN {FS = ":.*?##"; printf "\nPacto local development environment commands:\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-up: config ## Start the default stack (nostr-relay + anvil + pacto-bot-api)
+certs: ## Generate or refresh locally-trusted TLS certificates for Caddy
+	@./scripts/generate-local-certs.sh
+
+up: config certs ## Start the default stack (nostr-relay + anvil + pacto-bot-api)
 	docker compose up -d --build
 
 ensure-sibling-repos: ## Ensure required sibling repositories (e.g. pacto-gov) are cloned
 	@./scripts/ensure-sibling-repos.sh $(if $(YES),--yes)
 
-up-all: config ensure-sibling-repos ## Start the full stack (default + aztec + bunker + seed)
+up-all: config certs ensure-sibling-repos ## Start the full stack (default + aztec + bunker + seed)
 	docker compose --profile full up -d --build
 
 seed: ensure-sibling-repos ## Deploy Pacto governance contracts to Anvil (one-shot)

@@ -79,7 +79,8 @@ sudo apt update
 sudo apt install -y \
   build-essential cmake clang libclang-dev curl wget file git pkg-config \
   libvulkan-dev libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
-  libayatana-appindicator3-dev librsvg2-dev libasound2-dev
+  libayatana-appindicator3-dev librsvg2-dev libasound2-dev \
+  mkcert libnss3-tools
 ```
 
 **macOS / Apple Silicon:**
@@ -92,7 +93,7 @@ xcode-select --install
 Then install the toolchain:
 
 ```bash
-brew install docker rustup node@24 pnpm foundry cmake llvm pkg-config openssl@3 git wget
+brew install docker rustup node@24 pnpm foundry cmake llvm pkg-config openssl@3 git wget mkcert
 echo 'export PATH="$(brew --prefix llvm)/bin:$PATH"' >> ~/.zshrc
 echo 'export LIBCLANG_PATH="$(brew --prefix llvm)/lib"' >> ~/.zshrc
 echo 'export PKG_CONFIG_PATH="$(brew --prefix openssl@3)/lib/pkgconfig:$PKG_CONFIG_PATH"' >> ~/.zshrc
