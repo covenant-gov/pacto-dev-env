@@ -96,9 +96,11 @@ make up          # default stack: relay + anvil + pacto-bot-api
 make up-all      # default stack + aztec + bunker + seed
 make seed        # run the seed deployer on its own
 make seed-squad  # deploy a Nave Pirata squad (requires captain/candidate env vars)
+make reseed      # reset, restart, and re-deploy governance contracts
+make reseed-all  # reset, restart, deploy contracts, and seed a squad
 make dev         # pull + up + optional dev-bot + printed next steps
 make down        # stop everything across all profiles
-make reset       # stop everything and delete ./data
+make reset       # stop everything, delete ./data, and clear local deployment artifacts
 ```
 
 Under the hood:
@@ -112,6 +114,8 @@ Under the hood:
    - `aztec-sandbox` waits for `anvil` to be healthy.
    - `nip46-bunker` waits for its DB and Redis to be healthy.
 6. When the `seed` profile is active, the one-shot `seed` service runs after `anvil` is healthy and writes `./data/deployments/31337/full-system.json`.
+
+`make seed` is idempotent and self-healing: if `full-system.json` exists and the recorded `NavePirataFactory` is still live on Anvil, the service exits; if the factory is missing (for example, after Anvil was reset), it re-deploys automatically. Set `FORCE_SEED=1` to always re-deploy, or use `make reseed` / `make reseed-all` for a one-command reset and reseed.
 
 ### Required operator setup before `make up`
 
@@ -156,6 +160,7 @@ After `make seed` has produced `./data/deployments/31337/full-system.json`,
   `PACTO_AUTO_CREATE_SQUAD_IDENTITIES=1` to skip the prompt.
 - If they are missing and you decline auto-creation, the script prints
   `pacto-bot-admin new` instructions and exits 1.
+- `make seed-squad` validates that the Pacto infrastructure is still deployed on Anvil; if the chain has been reset, run `make seed` first, or use `make reseed-all`.
 - On success it writes `./data/deployments/31337/squad.json`.
 - The captain address is the deployer address (Anvil account #0) for local dev;
   the public-key env vars are captured here so a sibling repo's env generator can
