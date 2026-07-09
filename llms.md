@@ -69,7 +69,7 @@ All commands are exposed through `Makefile` targets:
 
 | Repo | Technology | What it consumes from this repo |
 |---|---|---|
-| `pacto-app` | Rust / Tauri | Nostr relay (`ws://localhost:7000`), Anvil EVM (`http://localhost:8545`) |
+| `pacto-app` | Rust / Tauri | Nostr relay (`ws://localhost:7000`), Anvil EVM (`http://localhost:8545` or `https://localhost:8546`) |
 | `pacto-gov` | Solidity / Foundry | Anvil EVM for `forge script` deployments |
 | `pacto-governance-bots` | Rust / Python bots | `pacto-bot-api` Unix socket, Anvil EVM |
 | `pacto-aztec` | Noir / TypeScript | Anvil EVM for L1, Aztec sandbox (optional) |
@@ -82,8 +82,9 @@ All commands are exposed through `Makefile` targets:
 
 - Container health: `docker compose logs -f`
 - Stack verification: `make check`
-- Anvil RPC: `cast block-number --rpc-url http://localhost:8545`
+- Anvil RPC: `cast block-number --rpc-url http://localhost:8545` or `cast block-number --rpc-url https://localhost:8546 --insecure`
 - Relay: `curl -s http://localhost:7000` or `websocat -k -1 wss://localhost:7001`
+- TLS certs: generated automatically by `make up` via `scripts/generate-local-certs.sh` (uses mkcert when available, otherwise Caddy's internal CA)
 - Daemon socket: `docker compose exec pacto-bot-api test -S /var/lib/pacto-bot-api/pacto-bot-api.sock`
 - Debug sidecar: `docker compose --profile debug up -d --build` then `docker compose exec debug bash`
 

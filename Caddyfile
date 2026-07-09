@@ -1,21 +1,36 @@
 {
-  # Use Caddy's internal CA for a self-signed TLS cert. This requires no
-  # external tooling, but clients must skip verification or trust the cert.
-  # To switch to a locally-trusted mkcert cert, run:
-  #   scripts/generate-local-certs.sh
+	# Use Caddy's internal CA for a self-signed TLS cert. This requires no
+	# external tooling, but clients must skip verification or trust the cert.
+	# To switch to a locally-trusted mkcert cert, install mkcert and run:
+	#   scripts/generate-local-certs.sh
 }
 
 localhost:8443 {
-  bind 0.0.0.0
+	bind 0.0.0.0
 
-  tls internal
+	tls internal
 
-  reverse_proxy nostr-relay:8080 {
-    header_up Host {host}
-    header_up X-Real-IP {remote_host}
-  }
+	reverse_proxy nostr-relay:8080 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+	}
 
-  log {
-    output stderr
-  }
+	log {
+		output stderr
+	}
+}
+
+localhost:8444 {
+	bind 0.0.0.0
+
+	tls internal
+
+	reverse_proxy anvil:8545 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output stderr
+	}
 }

@@ -17,6 +17,7 @@ The default stack starts three services:
 |---|---|---|
 | Nostr relay | `ws://localhost:7000` | Decentralized messaging relay |
 | Anvil EVM testnet | `http://localhost:8545` | Local EVM chain (chain ID 31337) |
+| Anvil EVM testnet over TLS | `https://localhost:8546` | Anvil via Caddy reverse proxy |
 | `pacto-bot-api` | Unix socket in `pacto-bot-api-data` | Bot handler daemon |
 
 Optional profiles add more services:
@@ -56,8 +57,10 @@ cd pacto-dev-env
 make up
 ```
 
-`make up` builds the local Anvil image on first run and starts the default
-stack. This can take a few minutes the first time.
+`make up` builds the local Anvil image on first run, generates or refreshes
+Caddy's TLS certificates (using mkcert if available, otherwise Caddy's
+self-signed CA), and starts the default stack. This can take a few minutes
+the first time.
 
 If you want everything at once (including Aztec, bunker, and the governance
 seeder), use `make up-all` instead.
@@ -127,7 +130,7 @@ For detailed per-project workflows, see [`docs/workflows.md`](docs/workflows.md)
 flowchart TB
     subgraph dev["pacto-dev-env (this repo)"]
         relay["Nostr relay\nws://localhost:7000"]
-        anvil["Anvil EVM\nhttp://localhost:8545"]
+        anvil["Anvil EVM\nhttp://localhost:8545\nhttps://localhost:8546"]
         botapi["pacto-bot-api daemon\nUnix socket"]
         aztec["Aztec sandbox\noptional"]
         bunker["NIP-46 bunker\noptional"]

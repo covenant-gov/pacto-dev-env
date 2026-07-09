@@ -33,7 +33,7 @@ graph TD
       direction TB
       Relay[nostr-relay<br/>ws://localhost:7000<br/>wss://localhost:7001]
       Caddy[caddy<br/>wss://localhost:7001]
-      Anvil[anvil<br/>http://localhost:8545]
+      Anvil[anvil<br/>http://localhost:8545<br/>https://localhost:8546]
       Daemon[pacto-bot-api<br/>Unix socket in volume]
       Seed[seed<br/>one-shot deployer]
       Aztec[aztec-sandbox<br/>profile: aztec]
@@ -48,21 +48,27 @@ graph TD
     Anvil -->|L1 RPC| Aztec
     Seed -->|forge script| Anvil
     Caddy -->|ws://| Relay
+    Caddy -->|https://| Anvil
     AppCompose[sibling app compose] -->|external network + shared volumes| Docker
 ```
 
 All services share a Docker bridge network named `pacto` so sibling composes can reach them by service name. The default stack always starts `nostr-relay`, `anvil`, and `pacto-bot-api`. Optional services are gated by Compose profiles.
 
-### Nostr relay TLS
+### Nostr relay and Anvil TLS
 
-A `caddy` sidecar is part of the default stack and exposes `wss://localhost:7001` on the host. It terminates TLS with a Caddy-generated self-signed certificate and proxies plain `ws://` to `nostr-relay:8080`. Clients must either skip certificate verification or run `scripts/generate-local-certs.sh` (requires `mkcert`) to produce a locally-trusted certificate.
+A `caddy` sidecar is part of the default stack and exposes two TLS endpoints on the host:
+
+- `wss://localhost:7001` proxies plain `ws://` to `nostr-relay:8080`.
+- `https://localhost:8546` proxies `http://` to `anvil:8545`.
+
+`make up` and `make up-all` run `scripts/generate-local-certs.sh` automatically. If `mkcert` is installed (the setup scripts install it), Caddy uses a locally-trusted certificate. If `mkcert` is not available, Caddy falls back to its internal self-signed CA; clients must then skip certificate verification. To trust the mkcert CA in browsers, run `mkcert -install` once after the certificates are generated.
 
 ## Services
 
 | Service | Default | Profile | Purpose | Image source |
 |---|---|---|---|---|
 | `nostr-relay` | yes | — | Nostr relay for DM/MLS testing | `ghcr.io/covenant-gov/pacto-dev-env/nostr-relay:main` |
-| `caddy` | yes | — | TLS sidecar for `wss://localhost:7001` | `caddy:2-alpine` |
+| `caddy` | yes | — | TLS sidecar for `wss://localhost:7001` and `https://localhost:8546` | `caddy:2-alpine` |
 | `anvil` | yes | — | Local EVM testnet, chain ID 31337 | built locally from `docker/anvil.Dockerfile` |
 | `pacto-bot-api` | yes | — | Daemon that bot handlers connect to | `ghcr.io/covenant-gov/pacto-bot-api:latest` |
 | `seed` | no | `seed`, `full` | Deploys Pacto governance contracts to Anvil | `pacto-anvil:local` (one-shot) |
@@ -199,6 +205,7 @@ Inside the attached container, use service names instead of `localhost`:
 - `http://anvil:8545` for the EVM RPC
 - `ws://nostr-relay:8080` for the Nostr relay
 - `wss://caddy:8443` for the Nostr relay over TLS from inside the Docker network
+- `https://caddy:8444` for the Anvil EVM RPC over TLS from inside the Docker network
 - `/var/lib/pacto-bot-api/pacto-bot-api.sock` for the daemon socket (via the shared volume)
 - `http://aztec-sandbox:8080` for Aztec RPC
 - `http://nip46-bunker:3000` for the bunker

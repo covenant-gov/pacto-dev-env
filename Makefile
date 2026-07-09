@@ -57,7 +57,8 @@ dev: ## One-shot: pull images, start default stack, optional dev bot, seed contr
 	@echo
 	@echo "Quick checks:"
 	@echo "  cast block-number --rpc-url http://localhost:8545"
-	@echo "  docker compose exec pacto-bot-api test -S /var/lib/pacto-bot-api/pacto-bot-api.sock && echo 'daemon socket ready'"
+	@echo "  cast block-number --rpc-url https://localhost:8546 --insecure"
+	@echo "  docker compose exec pacto-bot-api test -S /var/lib/pacto-bot-api/pacto-bot-api.sock \u0026\u0026 echo 'daemon socket ready'"
 	@echo "  curl -s http://localhost:7000 | head -5"
 
 down: ## Stop all services and remove containers for all profiles
