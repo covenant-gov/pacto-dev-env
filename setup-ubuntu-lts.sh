@@ -206,9 +206,38 @@ install_websocat() {
   log "websocat installed: $("$dest" --version | head -1)"
 }
 
-# ---------------------------------------------------------------------------
-# Node.js + pnpm
-# ---------------------------------------------------------------------------
+install_nak() {
+  if command_exists nak; then
+    log "nak already installed: $(nak --version | head -1)"
+    return 0
+  fi
+
+  log "Installing nak from GitHub release..."
+  local version="0.20.0"
+  local arch
+  case "$(uname -m)" in
+    x86_64) arch="linux-amd64" ;;
+    aarch64|arm64) arch="linux-arm64" ;;
+    *) err "Unsupported architecture: $(uname -m)"; return 1 ;;
+  esac
+  local asset="nak-v${version}-${arch}"
+  local url="https://github.com/fiatjaf/nak/releases/download/v${version}/${asset}"
+  local checksum
+  case "$arch" in
+    linux-amd64) checksum="c92c30eb04fb5519cb385f9b5ad10248c961792c936c7a333ef0e895ef5869b9" ;;
+    linux-arm64) checksum="0d51103d73dffd30f3cf5d5e2a5d2349b62aa570760bb1140233beab40a46ca9" ;;
+  esac
+
+  local tmpfile
+  tmpfile="$(mktemp)"
+  curl -fsSL "$url" -o "$tmpfile"
+  echo "${checksum}  ${tmpfile}" | sha256sum -c - >/dev/null 2>&1
+  run_privileged install -m 0755 "$tmpfile" /usr/local/bin/nak
+  rm -f "$tmpfile"
+  log "nak installed: $(nak --version | head -1)"
+}
+
+
 
 install_node() {
   if command_exists node; then
@@ -490,6 +519,7 @@ verify_install() {
   jq --version
   socat -V | head -1
   websocat --version | head -1
+  nak --version | head -1
   shellcheck --version | head -1
   if command_exists aztec-sandbox; then
     aztec-sandbox --version
@@ -516,6 +546,7 @@ main() {
   install_docker
   install_rust
   install_websocat
+  install_nak
   install_node
   install_pnpm
   install_foundry

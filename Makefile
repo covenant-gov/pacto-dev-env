@@ -6,7 +6,7 @@
 # Generate real bunker secrets in `.env` before using the `bunker` or `full`
 # profiles. See `.env.example` for the template.
 
-.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group
+.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group build-pacto-bot-api publish-key-package check-group
 
 help: ## Show this help message and all available targets
 	@awk 'BEGIN {FS = ":.*?##"; printf "\nPacto local development environment commands:\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -14,7 +14,7 @@ help: ## Show this help message and all available targets
 certs: ## Generate or refresh locally-trusted TLS certificates for Caddy
 	@./scripts/generate-local-certs.sh
 
-up: config certs ## Start the default stack (nostr-relay + anvil + pacto-bot-api)
+up: config certs build-pacto-bot-api ## Start the default stack (nostr-relay + anvil + pacto-bot-api)
 	docker compose up -d --build
 
 ensure-sibling-repos: ## Ensure required sibling repositories (e.g. pacto-gov) are cloned
@@ -24,7 +24,7 @@ up-all: config certs ensure-sibling-repos ## Start the full stack (default + azt
 	docker compose --profile full up -d --build
 
 seed: ensure-sibling-repos ## Deploy Pacto governance contracts to Anvil (one-shot)
-	docker compose --profile seed run --rm seed
+	HOST_UID=$$(id -u) HOST_GID=$$(id -g) docker compose --profile seed run --rm seed
 
 seed-squad: ## Deploy a Nave Pirata squad to Anvil (identities + on-chain crew bootstrap)
 	@./scripts/seed-squad.sh
@@ -90,7 +90,20 @@ check: check-env ## Verify the host environment and the running stack
 config: ## Generate pacto-bot-api.toml if missing
 	@./scripts/init-pacto-bot-api-config.sh
 
-create-mls-group: ## Create or re-open an MLS group and invite a bot (requires BOT_NPUB and GROUP_NAME)
+build-pacto-bot-api: ## Build the pacto-bot-api image from the sibling repo when present
+	@if [ -d "../pacto-bot-api" ]; then \
+		docker compose build pacto-bot-api; \
+	else \
+		echo "No sibling pacto-bot-api repo found; using prebuilt image on next start."; \
+	fi
+
+publish-key-package: ## Publish a KeyPackage for a bot (requires BOT_ID)
+	@./scripts/publish-key-package.sh
+
+check-group: ## Report MLS group artifact(s) and daemon DB state
+	@./scripts/check-group.sh
+
+create-mls-group: ## Create an MLS group and invite a bot (requires BOT_ID, GROUP_NAME, RECIPIENT_NPUB)
 	@./scripts/create-mls-group.sh
 
 verify-squad: ## Gather on-chain debug info for the seeded squad (registry, Safe, governance, members)

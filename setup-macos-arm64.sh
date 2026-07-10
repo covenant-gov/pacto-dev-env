@@ -126,6 +126,27 @@ install_aztec_cli() {
   fi
 }
 
+install_nak() {
+  if command -v nak >/dev/null 2>&1; then
+    log "nak already installed: $(nak --version | head -1)"
+    return 0
+  fi
+
+  log "Installing nak from GitHub release..."
+  local version="0.20.0"
+  local asset="nak-v${version}-darwin-arm64"
+  local url="https://github.com/fiatjaf/nak/releases/download/v${version}/${asset}"
+  local checksum="96910cdb6391b496bbd836a29d833166aee5a20e32ca7547a0f40b5936ab7dcd"
+
+  local tmpfile
+  tmpfile="$(mktemp)"
+  curl -fsSL "$url" -o "$tmpfile"
+  echo "${checksum}  ${tmpfile}" | shasum -a 256 -c - >/dev/null 2>&1
+  sudo install -m 0755 "$tmpfile" /usr/local/bin/nak
+  rm -f "$tmpfile"
+  log "nak installed: $(nak --version | head -1)"
+}
+
 configure_shell() {
   local shell_rc="$HOME/.zshrc"
   [[ "$SHELL" == */bash ]] && shell_rc="$HOME/.bashrc"
@@ -175,6 +196,7 @@ verify_install() {
   jq --version
   socat -V | head -1
   websocat --version | head -1
+  nak --version | head -1
   shellcheck --version | head -1
   if command -v aztec-sandbox >/dev/null 2>&1; then
     aztec-sandbox --version
@@ -191,6 +213,7 @@ main() {
   install_rust
   install_foundry
   install_aztec_cli
+  install_nak
   configure_shell
   clone_repos "${1:-}"
   verify_install

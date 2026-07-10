@@ -87,6 +87,51 @@ cp .env.example .env
 docker compose --profile bunker up -d --build
 ```
 
+### Creating an MLS group
+
+`pacto-dev-env` ships with a single-command MLS group creation workflow:
+
+```bash
+make create-mls-group BOT_ID=bosun RECIPIENT_NPUB=<captain-npub> GROUP_NAME=local-dev-squad
+```
+
+The command:
+1. Validates that the creator bot (`bosun` by default) has the `Admin`
+   capability and an MLS engine (`mls_db_path`) in `pacto-bot-api.toml`.
+2. If the recipient is a bot configured in `pacto-bot-api.toml` with MLS
+   capabilities and no KeyPackage is on the relay, it publishes one
+   automatically.
+3. Polls the relay until the recipient's KeyPackage (kind:443) appears.
+4. Calls `pacto-bot-admin mls-group create` inside the `pacto-bot-api`
+   container.
+5. Writes the group artifact to `data/deployments/31337/group-<BOT_ID>.json`,
+   even when that directory is root-owned from earlier seed scripts.
+6. Prints the group wire ID.
+
+Requirements:
+
+- The creator bot must have the `Admin` capability and an MLS engine
+  (`mls_db_path`) configured in `pacto-bot-api.toml`.
+- The recipient must have a fresh KeyPackage (kind:443) on the relay. For a
+  human, this means opening the Pacto desktop app (`pacto-app`). For a bot,
+  run `make publish-key-package BOT_ID=<bot>` first (or let the create script
+  do it automatically for a configured bot).
+
+Other useful targets:
+
+- `make publish-key-package BOT_ID=captain` — publish a KeyPackage for a bot
+  by registering a temporary handler and calling `agent.publish_key_package`.
+- `make check-group` — print the group artifact(s) and daemon MLS database
+  state.
+
+If the daemon command fails with `-32602 invalid params`, the published
+`pacto-bot-api` image is stale. The `make up` target now builds from the
+sibling `../pacto-bot-api` repo when it exists, or you can rebuild manually:
+
+```bash
+make build-pacto-bot-api
+```
+
 ## Code Conventions & Common Patterns
 
 - **Bash setup scripts**
@@ -107,9 +152,10 @@ docker compose --profile bunker up -d --build
 
 When investigating service connectivity or protocol issues, prefer these tools:
 
-- **Host-side (already installed by setup scripts):** `cast`, `curl`, `jq`, `socat`, `websocat`.
+- **Host-side (already installed by setup scripts):** `cast`, `curl`, `jq`, `nak`, `socat`, `websocat`.
 - **Container-side (debug sidecar):** start `docker compose --profile debug up -d --build` and attach with `docker compose exec debug bash`.
   - `websocat ws://nostr-relay:8080` for raw Nostr WebSocket frames.
+  - `nak req -k 443 -a <bot_pubkey_hex> ws://nostr-relay:8080` to inspect a bot's MLS KeyPackage event on the relay.
   - `socat -v TCP-LISTEN:7001,fork TCP:nostr-relay:8080` to proxy/tap relay traffic.
   - `curl -fsS -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' http://anvil:8545 | jq .` for EVM RPC checks.
   - `psql postgresql://bunker46:bunker46@nip46-bunker-db:5432/bunker46` for bunker database inspection.

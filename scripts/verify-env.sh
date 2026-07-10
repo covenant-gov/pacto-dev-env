@@ -123,6 +123,7 @@ main() {
   check_command jq "jq"
   check_command socat "socat"
   check_command websocat "websocat"
+  check_command nak "nak" 0
 
   echo
   echo "Aztec (optional):"

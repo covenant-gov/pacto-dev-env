@@ -85,4 +85,43 @@ EOF
   fi
 fi
 
+# Optionally append a bosun identity with Admin + MLS engine and a captain
+# identity with MLS capabilities when the corresponding secrets are provided.
+# These are not created by default because they require real signing material.
+if [ "${PACTO_CREATE_BOSUN:-0}" = "1" ] && [ -n "${PACTO_BOSUN_NPUB:-}" ] && [ -n "${PACTO_BOSUN_NSEC:-}" ]; then
+  if grep -q '^id = "bosun"$' "$CONFIG_FILE" 2>/dev/null; then
+    echo "A bot identity named 'bosun' is already present in $CONFIG_FILE."
+  else
+    cat >> "$CONFIG_FILE" <<EOF
+[[bots]]
+id = "bosun"
+mls_db_path = "/var/lib/pacto-bot-api/bosun/bosun-mls.db"
+npub = "\${PACTO_BOSUN_NPUB}"
+signing = { backend = "nsec", nsec = "\${PACTO_BOSUN_NSEC}" }
+relays = ["ws://nostr-relay:8080"]
+capabilities = ["ReadMessages", "SendMessages", "ReceiveGroupMessages", "SendGroupMessages", "ManageProfile", "Admin"]
+
+EOF
+    echo "Added bosun bot identity with Admin + MLS capabilities."
+  fi
+fi
+
+if [ "${PACTO_CREATE_CAPTAIN:-0}" = "1" ] && [ -n "${PACTO_CAPTAIN_NPUB:-}" ] && [ -n "${PACTO_CAPTAIN_NSEC:-}" ]; then
+  if grep -q '^id = "captain"$' "$CONFIG_FILE" 2>/dev/null; then
+    echo "A bot identity named 'captain' is already present in $CONFIG_FILE."
+  else
+    cat >> "$CONFIG_FILE" <<EOF
+[[bots]]
+id = "captain"
+mls_db_path = "/var/lib/pacto-bot-api/captain/captain-mls.db"
+npub = "\${PACTO_CAPTAIN_NPUB}"
+signing = { backend = "nsec", nsec = "\${PACTO_CAPTAIN_NSEC}" }
+relays = ["ws://nostr-relay:8080"]
+capabilities = ["ReadMessages", "SendMessages", "ReceiveGroupMessages", "SendGroupMessages"]
+
+EOF
+    echo "Added captain bot identity with MLS capabilities."
+  fi
+fi
+
 chmod 600 "$CONFIG_FILE"

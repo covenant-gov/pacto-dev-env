@@ -108,6 +108,8 @@ services:
       FOUNDRY_CACHE_PATH: /tmp/pacto-gov-cache
       FOUNDRY_BROADCAST: /tmp/pacto-gov-broadcast
       PACTO_BYTECODE_DIR: /bytecode
+      HOST_UID: "${HOST_UID:-1000}"
+      HOST_GID: "${HOST_GID:-1000}"
     volumes:
       - ${PACTO_GOV_DIR:-../pacto-gov}:/pacto-gov
       - ./data/deployments:/pacto-gov/deployments
@@ -133,7 +135,7 @@ services:
       context: ./docker
       dockerfile: anvil.Dockerfile
     image: pacto-anvil:local
-    command:
+    pull_policy: if_not_present
       - "--block-time"
       - "2"
       - "--host"

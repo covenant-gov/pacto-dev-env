@@ -88,3 +88,10 @@ if [ -f "$ARTIFACT" ]; then
   echo "Full-system artifact: $ARTIFACT"
   echo "registry: $(_json_string_field "$ARTIFACT" navePirataRegistry), hats: $(_json_string_field "$ARTIFACT" hats)"
 fi
+
+# Fix artifact ownership so the host user can read/write deployment files
+# without relying on root privileges.  HOST_UID/HOST_GID are injected by make.
+if [ -n "${HOST_UID:-}" ] && [ -n "${HOST_GID:-}" ] && [ -d "$DEPLOYMENTS_DIR" ]; then
+  echo "Fixing artifact ownership for host user $HOST_UID:$HOST_GID..."
+  chown -R "$HOST_UID:$HOST_GID" "$DEPLOYMENTS_DIR" 2>/dev/null || true
+fi
