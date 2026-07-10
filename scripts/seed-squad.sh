@@ -596,3 +596,13 @@ echo "Artifact: $SQUAD_ARTIFACT"
 echo "Crew members:"
 jq -r '.crewMembers[] | "  - \(.bot_id // "explicit"): \(.address)"' "$SQUAD_ARTIFACT" 2>/dev/null || true
 jq . "$SQUAD_ARTIFACT" 2>/dev/null || true
+
+# Fix artifact ownership so the host user can read/write deployment files.
+if [ -d "$DEPLOYMENTS_DIR" ]; then
+  echo "Fixing artifact ownership for host user $(id -u):$(id -g)..."
+  docker run --rm \
+    -v "$DEPLOYMENTS_DIR:/dst" \
+    --entrypoint chown \
+    alpine:latest \
+    -R "$(id -u):$(id -g)" /dst
+fi
