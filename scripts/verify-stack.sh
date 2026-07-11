@@ -46,7 +46,7 @@ service_health() {
 
 check_anvil() {
   local version
-  echo "Checking anvil..."
+  echo "Checking anvil EVM testnet..."
   if [ "$(service_state anvil)" != "running" ]; then
     fail "anvil container is not running"
     return
@@ -100,30 +100,16 @@ check_nostr_relay() {
   fi
 
   if curl -sS http://localhost:7000 >/dev/null 2>&1; then
-    pass "nostr-relay responds on http://localhost:7000"
+    pass "nostr-relay HTTP root responds on http://localhost:7000"
   else
-    fail "nostr-relay is not responding on http://localhost:7000"
-  fi
-}
-
-check_caddy() {
-  echo "Checking caddy TLS sidecar..."
-  if [ "$(service_state caddy)" != "running" ]; then
-    warn "caddy TLS sidecar is not running"
-    return
-  fi
-
-  if [ "$(service_health caddy)" = "healthy" ]; then
-    pass "caddy container is healthy"
-  else
-    warn "caddy container is running but not yet healthy"
+    fail "nostr-relay HTTP root is not responding on http://localhost:7000"
   fi
 
   if command -v websocat >/dev/null 2>&1; then
     if printf '[]\n' | websocat -k -1 wss://localhost:7001 2>/dev/null | cat >/dev/null; then
-      pass "caddy TLS sidecar responds on wss://localhost:7001"
+      pass "nostr-relay responds over WSS on wss://localhost:7001"
     else
-      fail "caddy TLS sidecar is not responding on wss://localhost:7001"
+      fail "nostr-relay is not responding over WSS on wss://localhost:7001"
     fi
   else
     warn "websocat not found in PATH; skipping wss:// check"
@@ -245,7 +231,6 @@ main() {
 
   check_anvil
   check_nostr_relay
-  check_caddy
   check_pacto_bot_api
 
   # Optional services are checked only when they are running.
