@@ -11,6 +11,8 @@ For the full stack (Aztec, bunker, and seed), use `make up-all` instead. Once
 services are up, run `make pacto-connect` to print the wss/https URLs and env
 exports for connecting Pacto to this stack.
 
+You can also install the Claude Code skill (`npx skills add covenant-gov/pacto-dev-env`) and use `/pacto-dev-env setup` to start the stack and `/pacto-dev-env connect` to configure the current repo.
+
 ## Build and run `pacto-app`
 
 ```bash

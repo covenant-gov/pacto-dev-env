@@ -6,6 +6,8 @@
 # Generate real bunker secrets in `.env` before using the `bunker` or `full`
 # profiles. See `.env.example` for the template.
 
+.DEFAULT_GOAL := help
+
 .PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group build-pacto-bot-api publish-key-package check-group pacto-connect
 
 pacto-connect: ## Print Pacto connection instructions using wss/https endpoints

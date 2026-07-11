@@ -30,6 +30,37 @@ Optional profiles add more services:
 | `full` | `aztec` + `bunker` + `seed` |
 | `debug` | Interactive sidecar with `websocat`, `socat`, `curl`, `jq`, etc. |
 
+## Use with Claude Code
+
+This repository ships a Claude Code skill that can bootstrap the entire workspace and configure any sibling repo from inside Claude Code.
+
+Install it in any Pacto repository (or an empty directory):
+
+```bash
+npx skills add covenant-gov/pacto-dev-env
+```
+
+Then invoke it from Claude Code:
+
+```
+/pacto-dev-env setup
+```
+
+This will clone `pacto-dev-env` and the sibling Pacto repositories if they are missing, run the host setup script, and start the default Docker stack. Once the stack is running, configure the current repo:
+
+```
+/pacto-dev-env connect
+```
+
+Other useful invocations:
+
+```
+/pacto-dev-env status
+/pacto-dev-env troubleshoot ssl
+```
+
+The skill wraps the existing `make` targets and scripts in this repository; see the sections below for details on each step.
+
 ## Quick start
 
 ### 1. Prepare your host
