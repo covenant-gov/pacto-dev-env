@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Configure helper for the pacto-dev-env Claude Code skill.
+# Configure helper for the pacto-dev-env skill.
 # Run from a Pacto sibling repo to write local dev configuration.
 
 PACTO_DEV_ENV_DIR="${PACTO_DEV_ENV_DIR:-}"
