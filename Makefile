@@ -8,10 +8,19 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group build-pacto-bot-api publish-key-package check-group pacto-connect
+.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group build-pacto-bot-api publish-key-package check-group pacto-connect tailscale-serve-up tailscale-serve-down tailscale-serve-status
 
 pacto-connect: ## Print Pacto connection instructions using wss/https endpoints
 	@./scripts/pacto-connect.sh
+
+tailscale-serve-up: ## Expose Anvil and Nostr relay over your Tailscale tailnet
+	@./scripts/tailscale-serve.sh start
+
+tailscale-serve-down: ## Stop exposing Anvil and Nostr relay over Tailscale
+	@./scripts/tailscale-serve.sh stop
+
+tailscale-serve-status: ## Show current Tailscale serve configuration
+	@./scripts/tailscale-serve.sh status
 
 help: ## Show this help message and all available targets
 	@awk 'BEGIN {FS = ":.*?##"; printf "\nPacto local development environment commands:\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
