@@ -39,6 +39,7 @@ localhost:8443 {
 	reverse_proxy nostr-relay:8080 {
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
 	}
 
 	log {
@@ -54,6 +55,39 @@ localhost:8444 {
 	reverse_proxy anvil:8545 {
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output stderr
+	}
+}
+
+localhost:8445 {
+	bind 0.0.0.0
+
+	tls internal
+
+	reverse_proxy aztec-sandbox:8080 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output stderr
+	}
+}
+
+localhost:8446 {
+	bind 0.0.0.0
+
+	tls internal
+
+	reverse_proxy nip46-bunker:3000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
 	}
 
 	log {
@@ -77,6 +111,7 @@ localhost:8443 {
 	reverse_proxy nostr-relay:8080 {
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
 	}
 
 	log {
@@ -92,6 +127,39 @@ localhost:8444 {
 	reverse_proxy anvil:8545 {
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output stderr
+	}
+}
+
+localhost:8445 {
+	bind 0.0.0.0
+
+	tls /data/certs/localhost.pem /data/certs/localhost-key.pem
+
+	reverse_proxy aztec-sandbox:8080 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output stderr
+	}
+}
+
+localhost:8446 {
+	bind 0.0.0.0
+
+	tls /data/certs/localhost.pem /data/certs/localhost-key.pem
+
+	reverse_proxy nip46-bunker:3000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
 	}
 
 	log {
@@ -101,10 +169,22 @@ localhost:8444 {
 EOF
 }
 
+ensure_cert_dir_writable() {
+  if [ -d "$CERT_DIR" ] && [ ! -w "$CERT_DIR" ]; then
+    echo "Cert directory $CERT_DIR is not writable (likely owned by root from a Docker run)."
+    echo "Fixing ownership with a temporary Docker container..."
+    docker run --rm -v "$(pwd):/host" --workdir /host alpine:latest \
+      chown -R "$(id -u):$(id -g)" "$CERT_DIR" 2>/dev/null || true
+  fi
+}
+
 if [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ]; then
-  echo "Local TLS certificates already present in $CERT_DIR."
-  write_mkcert_caddyfile
-  exit 0
+  ensure_cert_dir_writable
+  if [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ]; then
+    echo "Local TLS certificates already present in $CERT_DIR."
+    write_mkcert_caddyfile
+    exit 0
+  fi
 fi
 
 if ! command -v mkcert >/dev/null 2>&1; then
@@ -117,6 +197,7 @@ if ! command -v mkcert >/dev/null 2>&1; then
   exit 0
 fi
 
+ensure_cert_dir_writable
 mkdir -p "$CERT_DIR"
 if mkcert \
   -cert-file "$CERT_FILE" \

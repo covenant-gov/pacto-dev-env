@@ -56,10 +56,12 @@ All services share a Docker bridge network named `pacto` so sibling composes can
 
 ### Nostr relay and Anvil TLS
 
-A `caddy` sidecar is part of the default stack and exposes two TLS endpoints on the host:
+A `caddy` sidecar is part of the default stack and exposes four TLS endpoints on the host:
 
 - `wss://localhost:7001` proxies plain `ws://` to `nostr-relay:8080`.
 - `https://localhost:8546` proxies `http://` to `anvil:8545`.
+- `https://localhost:8445` proxies `http://` to `aztec-sandbox:8080` (available when the `aztec` profile is active).
+- `https://localhost:8446` proxies `http://` to `nip46-bunker:3000` (available when the `bunker` profile is active).
 
 `make up` and `make up-all` run `scripts/generate-local-certs.sh` automatically. If `mkcert` is installed (the setup scripts install it), Caddy uses a locally-trusted certificate. If `mkcert` is not available, Caddy falls back to its internal self-signed CA; clients must then skip certificate verification. To trust the mkcert CA in browsers, run `mkcert -install` once after the certificates are generated.
 
@@ -68,7 +70,7 @@ A `caddy` sidecar is part of the default stack and exposes two TLS endpoints on 
 | Service | Default | Profile | Purpose | Image source |
 |---|---|---|---|---|
 | `nostr-relay` | yes | — | Nostr relay for DM/MLS testing | `ghcr.io/covenant-gov/pacto-dev-env/nostr-relay:main` |
-| `caddy` | yes | — | TLS sidecar for `wss://localhost:7001` and `https://localhost:8546` | `caddy:2-alpine` |
+| `caddy` | yes | — | TLS sidecar for `wss://localhost:7001`, `https://localhost:8546`, `https://localhost:8445`, and `https://localhost:8446` | `caddy:2-alpine` |
 | `anvil` | yes | — | Local EVM testnet, chain ID 31337 | built locally from `docker/anvil.Dockerfile` |
 | `pacto-bot-api` | yes | — | Daemon that bot handlers connect to | `ghcr.io/covenant-gov/pacto-bot-api:latest` |
 | `seed` | no | `seed`, `full` | Deploys Pacto governance contracts to Anvil | `pacto-anvil:local` (one-shot) |
@@ -208,7 +210,11 @@ Inside the attached container, use service names instead of `localhost`:
 - `https://caddy:8444` for the Anvil EVM RPC over TLS from inside the Docker network
 - `/var/lib/pacto-bot-api/pacto-bot-api.sock` for the daemon socket (via the shared volume)
 - `http://aztec-sandbox:8080` for Aztec RPC
+- `https://caddy:8445` for Aztec RPC over TLS from inside the Docker network
 - `http://nip46-bunker:3000` for the bunker
+- `https://caddy:8446` for the bunker over TLS from inside the Docker network
+
+Host-facing ports are bound to `127.0.0.1` by default, so they are only reachable from the local machine. For the Pacto-facing connection strings, run `make pacto-connect`.
 
 Host-facing ports are bound to `127.0.0.1` by default, so they are only reachable from the local machine.
 

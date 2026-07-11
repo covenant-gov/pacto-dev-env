@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-- `make check` now displays the running versions of anvil, nostra (nostr-relay), and pacto-bot-api alongside the existing health checks. The pacto-bot-api version is read from its local HTTP `/version` endpoint, so the daemon now starts with `--enable-http` in the default stack.
+- Add a Claude Code skill under `skills/pacto-dev-env/` that bootstraps the local workspace from any Pacto repo (or an empty directory). Install with `npx skills add covenant-gov/pacto-dev-env`, then use `/pacto-dev-env setup` to clone the dev environment and sibling repos, run the host setup script, and start the stack. Use `/pacto-dev-env connect` to configure the current repo, `/pacto-dev-env status` to check health, and `/pacto-dev-env troubleshoot ssl` for Caddy certificate issues.
 - Add `docker/debug.Dockerfile` and a `debug` Compose profile with network/WebSocket debugging tools (`websocat`, `socat`, `curl`, `jq`, `nc`, `psql`, `redis-cli`, `ping`, `dig`).
 - Install debugging utilities (`socat`, `websocat`, `jq`, `netcat-openbsd`) via the Ubuntu setup script and add a missing `verify_install()` step.
 - Add `PACTO_CLONE_REPOS=skip` and `PACTO_SKIP_AZTEC_CLI=1` options to `setup-ubuntu-lts.sh` for non-interactive installs.

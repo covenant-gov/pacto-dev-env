@@ -13,8 +13,8 @@ This repository is a **service orchestration layer**, not an application.
   - `anvil` EVM testnet on `http://localhost:8545` (chain 31337)
   - `pacto-bot-api` daemon on a Unix socket inside the `pacto-bot-api-data` volume
 - **Optional Compose profiles** extend the stack:
-  - `--profile aztec` adds `aztec-sandbox` (`http://localhost:8080`, admin `http://localhost:8880`); it waits for Anvil to be healthy and deploys rollup contracts to it.
-  - `--profile bunker` adds `nip46-bunker` (`http://127.0.0.1:3001`) backed by Postgres and Redis.
+  - `--profile aztec` adds `aztec-sandbox` (`http://localhost:8080`, `https://localhost:8445`, admin `http://localhost:8880`); it waits for Anvil to be healthy and deploys rollup contracts to it.
+  - `--profile bunker` adds `nip46-bunker` (`http://127.0.0.1:3001`, `https://localhost:8446`) backed by Postgres and Redis.
   - `--profile seed` runs a one-shot deploy of the Pacto governance contracts to Anvil and writes artifacts to `./data/deployments/31337/`.
   - `--profile full` adds `aztec-sandbox`, `nip46-bunker`, and the `seed` governance seeder.
   - `--profile debug` adds `debug`, an interactive sidecar with network/WebSocket inspection tools.
@@ -45,7 +45,13 @@ Ubuntu 24.04/24.10/26.04 LTS:
 sudo ./setup-ubuntu-lts.sh [base-dir]
 ```
 
-Both default to cloning repos into `~/src/covenant-gov/`. After running, open a new shell so PATH changes take effect.
+Both default to cloning repos into `~/src/covenant-gov/`. After running, open a new shell so PATH changes take effect. Then trust the local TLS certificate authority once:
+
+```bash
+mkcert -install
+```
+
+This lets Pacto use the Caddy TLS endpoints (`https://localhost:8546`, `wss://localhost:7001`, etc.) without certificate warnings. If you skip it, Caddy falls back to its internal self-signed CA and clients must skip verification.
 
 ### Start local services
 
@@ -89,24 +95,34 @@ docker compose --profile bunker up -d --build
 
 ### Creating an MLS group
 
-`pacto-dev-env` ships with a single-command MLS group creation workflow:
+`pacto-dev-env` ships with a single-command MLS group creation workflow. The group name must be unique for the creator bot; if the name (or an NIP-29 group derived from the same creator + name) already exists in the daemon, the command fails with `-32014 MLS group already exists`.
 
 ```bash
-make create-mls-group BOT_ID=bosun RECIPIENT_NPUB=<captain-npub> GROUP_NAME=local-dev-squad
+make create-mls-group BOT_ID=bosun \
+  RECIPIENT_NPUB=npub1grzreqfmrpae0ghmew6kxtwyj73vyraap95raw74hakj5jhte4eqltrvv7 \
+  GROUP_NAME=my-test-group-2026
+```
+
+A successful run prints the group wire ID and writes the artifact to `data/deployments/31337/group-<BOT_ID>.json`. Example output:
+
+```
+[create-mls-group] Group ID: ac051228cd9f2d782bdc3c3737c025b8502cc39045d0b7513075721f8305b66e
 ```
 
 The command:
 1. Validates that the creator bot (`bosun` by default) has the `Admin`
    capability and an MLS engine (`mls_db_path`) in `pacto-bot-api.toml`.
-2. If the recipient is a bot configured in `pacto-bot-api.toml` with MLS
-   capabilities and no KeyPackage is on the relay, it publishes one
-   automatically.
+2. Resolves the recipient by public key; if the recipient is a bot configured in
+   `pacto-bot-api.toml` with MLS capabilities and no KeyPackage is on the relay,
+   it publishes one automatically.
 3. Polls the relay until the recipient's KeyPackage (kind:443) appears.
 4. Calls `pacto-bot-admin mls-group create` inside the `pacto-bot-api`
    container.
 5. Writes the group artifact to `data/deployments/31337/group-<BOT_ID>.json`,
    even when that directory is root-owned from earlier seed scripts.
 6. Prints the group wire ID.
+
+If you see `error: config error: daemon request failed with error code -32014 (MLS group already exists)`, pick a fresh `GROUP_NAME` and retry. The artifact is named by `BOT_ID`, so creating a new group for the same bot overwrites the previous artifact file.
 
 Requirements:
 
@@ -121,8 +137,11 @@ Other useful targets:
 
 - `make publish-key-package BOT_ID=captain` — publish a KeyPackage for a bot
   by registering a temporary handler and calling `agent.publish_key_package`.
-- `make check-group` — print the group artifact(s) and daemon MLS database
-  state.
+- `make pacto-connect` — print the wss/https URLs and env exports for connecting
+  Pacto to this stack.
+- `make check-group` — print the group artifact(s) as JSON.
+- `SHOW_DB=1 make check-group` — also print the daemon's MLS database state
+  (text-only columns; no raw binary output).
 
 If the daemon command fails with `-32602 invalid params`, the published
 `pacto-bot-api` image is stale. The `make up` target now builds from the

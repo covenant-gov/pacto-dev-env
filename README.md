@@ -11,7 +11,7 @@ infrastructure.
 
 ## What you get
 
-The default stack starts three services:
+The default stack starts three services plus a Caddy TLS sidecar:
 
 | Service | Endpoint | Purpose |
 |---|---|---|
@@ -24,11 +24,42 @@ Optional profiles add more services:
 
 | Profile | What it adds |
 |---|---|
-| `aztec` | Aztec sandbox on `http://localhost:8080` |
-| `bunker` | NIP-46 remote-signing bunker on `http://127.0.0.1:3001` |
+| `aztec` | Aztec sandbox on `http://localhost:8080` and `https://localhost:8445` |
+| `bunker` | NIP-46 remote-signing bunker on `http://127.0.0.1:3001` and `https://localhost:8446` |
 | `seed` | One-shot deploy of Pacto governance contracts to Anvil |
 | `full` | `aztec` + `bunker` + `seed` |
 | `debug` | Interactive sidecar with `websocat`, `socat`, `curl`, `jq`, etc. |
+
+## Use with Claude Code
+
+This repository ships a Claude Code skill that can bootstrap the entire workspace and configure any sibling repo from inside Claude Code.
+
+Install it in any Pacto repository (or an empty directory):
+
+```bash
+npx skills add covenant-gov/pacto-dev-env
+```
+
+Then invoke it from Claude Code:
+
+```
+/pacto-dev-env setup
+```
+
+This will clone `pacto-dev-env` and the sibling Pacto repositories if they are missing, run the host setup script, and start the default Docker stack. Once the stack is running, configure the current repo:
+
+```
+/pacto-dev-env connect
+```
+
+Other useful invocations:
+
+```
+/pacto-dev-env status
+/pacto-dev-env troubleshoot ssl
+```
+
+The skill wraps the existing `make` targets and scripts in this repository; see the sections below for details on each step.
 
 ## Quick start
 
@@ -49,6 +80,14 @@ bash ./setup-ubuntu-lts.sh
 ```
 
 Open a new shell afterward so PATH changes take effect. For custom setups or manual prerequisites, see [`docs/setup.md`](docs/setup.md).
+
+If this is your first time on this machine, trust the local TLS certificate authority so Pacto can use the `https://` and `wss://` endpoints without certificate warnings:
+
+```bash
+mkcert -install
+```
+
+You only need to do this once. If `mkcert` is not installed, the setup scripts installed it; if you skipped the scripts, see `docs/setup.md` for manual installation.
 
 ### 2. Start the services
 
@@ -172,6 +211,7 @@ make seed-squad    # deploy a Nave Pirata squad
 make reseed        # reset, restart, and re-seed contracts
 make reseed-all    # reset, restart, seed, and deploy a squad
 make check         # verify the stack is healthy
+make pacto-connect # print Pacto connection URLs (wss/https)
 make reset         # stop everything and clear state
 ```
 
