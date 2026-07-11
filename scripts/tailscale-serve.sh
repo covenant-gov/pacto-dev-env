@@ -54,19 +54,30 @@ tailscale_machine() {
   echo "$dns_name"
 }
 
+is_serving() {
+  local port="$1"
+  tailscale serve status --json 2>/dev/null \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if str($port) in d.get('TCP', {}) else 'no')" 2>/dev/null
+}
+
 start() {
   require_tailscale
 
-  echo "[tailscale-serve] Exposing services on your tailnet..."
-  echo "  EVM RPC:     https://<machine>:${EVM_PORT}  -> http://localhost:8545"
-  echo "  Nostr relay: wss://<machine>:${RELAY_PORT}  -> http://localhost:7000"
-  echo
+  if [ "$(is_serving "$EVM_PORT")" = "yes" ] && [ "$(is_serving "$RELAY_PORT")" = "yes" ]; then
+    echo "[tailscale-serve] Already exposed on your tailnet."
+  else
+    echo "[tailscale-serve] Exposing services on your tailnet..."
+    echo "  EVM RPC:     https://<machine>:${EVM_PORT}  -> http://localhost:8545"
+    echo "  Nostr relay: wss://<machine>:${RELAY_PORT}  -> http://localhost:7000"
+    echo
 
-  tailscale serve --https="${EVM_PORT}" http://localhost:8545
-  tailscale serve --https="${RELAY_PORT}" http://localhost:7000
+    tailscale serve --bg --https="${EVM_PORT}" http://localhost:8545
+    tailscale serve --bg --https="${RELAY_PORT}" http://localhost:7000
+  fi
 
   echo
   echo "[tailscale-serve] Done."
+  status
   print_env
 }
 
