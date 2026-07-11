@@ -7,7 +7,9 @@ cd pacto-dev-env
 make up
 ```
 
-For the full stack (Aztec, bunker, and seed), use `make up-all` instead.
+For the full stack (Aztec, bunker, and seed), use `make up-all` instead. Once
+services are up, run `make pacto-connect` to print the wss/https URLs and env
+exports for connecting Pacto to this stack.
 
 ## Build and run `pacto-app`
 
@@ -25,18 +27,58 @@ To run just the frontend in a browser:
 pnpm dev
 ```
 
-### Connect `pacto-app` to the local EVM chain
+## Connect `pacto-app` to the local dev stack
 
-1. Start the dev services: `cd pacto-dev-env && make up`.
-2. In `pacto-app`, open **Settings → Wallet / Network**.
-3. Add a custom EVM network:
-   - Name: `Pacto Local`
-   - RPC URL: `http://localhost:8545`
-   - Chain ID: `31337`
-   - Currency symbol: `ETH`
-4. Import the default Anvil private key for a test account:
-   - Account #0 key: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
-   - **Never use this key outside of local development.**
+Run `make pacto-connect` in `pacto-dev-env` to print the current endpoints. Then paste the wss/https URLs into `pacto-app` as follows.
+
+### Nostr relay
+
+Open **Settings → Nostr** and add a custom relay:
+
+- URL: `wss://localhost:7001`
+- Mode: `both` (read + write)
+
+The app also accepts the plain WebSocket endpoint `ws://localhost:7000`. On first login, the in-app `local-dev-setup.ts` helper automatically adds `ws://localhost:7000` when it detects a local dev environment.
+
+### EVM RPC
+
+Open **Settings → EVM** and add a custom RPC for the `local` network (chain ID `31337`):
+
+- Name: `Pacto Local`
+- RPC URL: `https://localhost:8546`
+- Chain ID: `31337`
+- Currency symbol: `ETH`
+
+Then import the default Anvil private key for a test account:
+
+- Account #0 key: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
+- **Never use this key outside of local development.**
+
+### TLS trust
+
+If Caddy is using its self-signed CA (the default when `mkcert` is not installed), clients must skip TLS verification or trust the certificate. With `mkcert` installed, run `mkcert -install` once so browsers and system certificate stores trust the local CA.
+
+### Optional: Aztec sandbox
+
+Start the Aztec profile:
+
+```bash
+cd pacto-dev-env
+docker compose --profile aztec up -d --build
+```
+
+Use `https://localhost:8445` for Aztec RPC in any Aztec-related tooling or app settings. The admin interface is still at `http://localhost:8880` (not proxied through Caddy).
+
+### Optional: NIP-46 bunker
+
+Start the bunker profile:
+
+```bash
+cd pacto-dev-env
+docker compose --profile bunker up -d --build
+```
+
+Set `COOKIE_SECURE=true` in `.env` when running the bunker behind Caddy's HTTPS endpoint, and use `https://localhost:8446` as the bunker URL.
 
 ### Common `pacto-app` build fixes
 
@@ -94,7 +136,7 @@ pnpm compile   # compiles Noir contracts
 pnpm test      # runs tests against the sandbox
 ```
 
-The Aztec RPC is at `http://localhost:8080`.
+The Aztec RPC is at `http://localhost:8080` or `https://localhost:8445` through Caddy.
 
 ## Work on `nostr-k-derivs`
 

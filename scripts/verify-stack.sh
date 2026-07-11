@@ -188,6 +188,12 @@ check_aztec() {
   else
     fail "aztec-sandbox is not responding on http://localhost:8080/status"
   fi
+
+  if curl -k -fsS https://localhost:8445/status >/dev/null 2>&1; then
+    pass "aztec-sandbox responds over HTTPS on https://localhost:8445/status"
+  else
+    fail "aztec-sandbox is not responding over HTTPS on https://localhost:8445/status"
+  fi
 }
 
 check_bunker() {
@@ -207,6 +213,12 @@ check_bunker() {
     pass "nip46-bunker responds on http://localhost:3001/api/auth/config"
   else
     fail "nip46-bunker is not responding on http://localhost:3001/api/auth/config"
+  fi
+
+  if curl -k -fsS https://localhost:8446/api/auth/config >/dev/null 2>&1; then
+    pass "nip46-bunker responds over HTTPS on https://localhost:8446/api/auth/config"
+  else
+    fail "nip46-bunker is not responding over HTTPS on https://localhost:8446/api/auth/config"
   fi
 }
 

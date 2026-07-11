@@ -559,14 +559,15 @@ main() {
   verify_install
 
   log "Setup complete. Open a new shell (or run \`source ~/.bashrc\`) to pick up environment changes."
-  log "Next steps:"
+  log "Trust the local TLS certificate authority once before starting services:"
+  log "  mkcert -install"
+  log "Then start the dev services:"
+  log "  cd pacto-dev-env"
+  log "  make up"
+  log "Next steps for app development:"
   log "  cd <your-clone-dir>/pacto-app"
   log "  pnpm install"
   log "  pnpm run tauri:dev"
-  log ""
-  log "To start the local Docker services:"
-  log "  cd pacto-dev-env"
-  log "  docker compose up -d --build"
 }
 
 main "$@"

@@ -20,18 +20,23 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # TLS-terminating sidecar for the Nostr relay and Anvil. It exposes wss://
-  # on host port 7001 (proxied to the relay container) and https:// on host
-  # port 8546 (proxied to the Anvil container). By default it uses Caddy's
-  # self-signed certificate; clients must either skip verification or run
-  # scripts/generate-local-certs.sh to switch to a locally-trusted mkcert
-  # certificate.
+  # TLS-terminating sidecar for the Nostr relay, Anvil, Aztec, and NIP-46
+  # bunker. It exposes:
+  #   wss:// on host port 7001 (proxied to the relay container)
+  #   https:// on host port 8546 (proxied to the Anvil container)
+  #   https:// on host port 8445 (proxied to the Aztec container)
+  #   https:// on host port 8446 (proxied to the NIP-46 bunker container)
+  # By default it uses Caddy's self-signed certificate; clients must either
+  # skip verification or run scripts/generate-local-certs.sh to switch to a
+  # locally-trusted mkcert certificate.
   caddy:
     image: caddy:2-alpine
     container_name: pacto-caddy
     ports:
       - "127.0.0.1:7001:8443"
       - "127.0.0.1:8546:8444"
+      - "127.0.0.1:8445:8445"
+      - "127.0.0.1:8446:8446"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

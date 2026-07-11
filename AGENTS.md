@@ -13,8 +13,8 @@ This repository is a **service orchestration layer**, not an application.
   - `anvil` EVM testnet on `http://localhost:8545` (chain 31337)
   - `pacto-bot-api` daemon on a Unix socket inside the `pacto-bot-api-data` volume
 - **Optional Compose profiles** extend the stack:
-  - `--profile aztec` adds `aztec-sandbox` (`http://localhost:8080`, admin `http://localhost:8880`); it waits for Anvil to be healthy and deploys rollup contracts to it.
-  - `--profile bunker` adds `nip46-bunker` (`http://127.0.0.1:3001`) backed by Postgres and Redis.
+  - `--profile aztec` adds `aztec-sandbox` (`http://localhost:8080`, `https://localhost:8445`, admin `http://localhost:8880`); it waits for Anvil to be healthy and deploys rollup contracts to it.
+  - `--profile bunker` adds `nip46-bunker` (`http://127.0.0.1:3001`, `https://localhost:8446`) backed by Postgres and Redis.
   - `--profile seed` runs a one-shot deploy of the Pacto governance contracts to Anvil and writes artifacts to `./data/deployments/31337/`.
   - `--profile full` adds `aztec-sandbox`, `nip46-bunker`, and the `seed` governance seeder.
   - `--profile debug` adds `debug`, an interactive sidecar with network/WebSocket inspection tools.
@@ -45,7 +45,13 @@ Ubuntu 24.04/24.10/26.04 LTS:
 sudo ./setup-ubuntu-lts.sh [base-dir]
 ```
 
-Both default to cloning repos into `~/src/covenant-gov/`. After running, open a new shell so PATH changes take effect.
+Both default to cloning repos into `~/src/covenant-gov/`. After running, open a new shell so PATH changes take effect. Then trust the local TLS certificate authority once:
+
+```bash
+mkcert -install
+```
+
+This lets Pacto use the Caddy TLS endpoints (`https://localhost:8546`, `wss://localhost:7001`, etc.) without certificate warnings. If you skip it, Caddy falls back to its internal self-signed CA and clients must skip verification.
 
 ### Start local services
 
@@ -131,6 +137,8 @@ Other useful targets:
 
 - `make publish-key-package BOT_ID=captain` — publish a KeyPackage for a bot
   by registering a temporary handler and calling `agent.publish_key_package`.
+- `make pacto-connect` — print the wss/https URLs and env exports for connecting
+  Pacto to this stack.
 - `make check-group` — print the group artifact(s) as JSON.
 - `SHOW_DB=1 make check-group` — also print the daemon's MLS database state
   (text-only columns; no raw binary output).
