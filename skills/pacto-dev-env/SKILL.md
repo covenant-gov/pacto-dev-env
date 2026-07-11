@@ -18,12 +18,22 @@ Use `/pacto-dev-env <subcommand>`.
 1. Determine the base directory: use `PACTO_DEV_ENV_DIR` if set, otherwise `~/src/covenant-gov/pacto-dev-env`.
 2. If `pacto-dev-env` is missing, clone it from `https://github.com/covenant-gov/pacto-dev-env.git` into that directory.
 3. Run the bootstrap helper inside the cloned repo: `bash "${PACTO_DEV_ENV_DIR}/scripts/skill-bootstrap.sh"`.
-4. The helper will:
-   - Detect the host platform (macOS arm64 or Ubuntu LTS).
-   - Run the appropriate setup script (`./setup-macos-arm64.sh` or `sudo ./setup-ubuntu-lts.sh`).
-   - Clone missing sibling repos (`pacto-app`, `pacto-gov`, `pacto-bot-api`, `pacto-aztec`) into the same base directory.
-   - Start the default stack with `make up`.
-5. Report which services are running and which ports are exposed.
+4. The helper will interview the user to decide which service stack to start:
+   - **Connect a frontend** (e.g., `pacto-app`) → `make up` (nostr-relay, anvil, pacto-bot-api).
+   - **Test governance / Aztec / bunker** → `make up-all` (default + aztec + bunker + contract seed).
+   - **Seed a Nave Pirata squad** → `make up-all && make seed-squad`.
+   - **Create an MLS group** → `make up-all && make seed-squad && make create-mls-group`.
+   - **Use existing bots** → `make up-all` after verifying `pacto-bot-api.toml` has bots.
+   - **Not sure** → show the raw stack menu and ask the user to pick.
+   
+   In non-interactive contexts the helper defaults to `make up`.
+5. The helper also:
+   - Detects the host platform (macOS arm64 or Ubuntu LTS).
+   - Runs the appropriate setup script (`./setup-macos-arm64.sh` or `sudo ./setup-ubuntu-lts.sh`).
+   - Clones missing sibling repos (`pacto-app`, `pacto-gov`, `pacto-bot-api`, `pacto-aztec`) into the same base directory.
+6. Report which services are running and which ports are exposed.
+
+For automated use, set `PACTO_START_MODE` to one of `default`, `full`, `squad`, `group`, or `bots` before invoking the script. Group mode also requires `RECIPIENT_NPUB`; `BOT_ID` defaults to `bosun` and `GROUP_NAME` to `local-dev-squad`.
 
 ### `status` — Check the dev environment
 
