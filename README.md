@@ -30,27 +30,35 @@ Optional profiles add more services:
 | `full` | `aztec` + `bunker` + `seed` |
 | `debug` | Interactive sidecar with `websocat`, `socat`, `curl`, `jq`, etc. |
 
-## Use with Claude Code
+## Quick start
 
-This repository ships a Claude Code skill that can bootstrap the entire workspace and configure any sibling repo from inside Claude Code.
+### 1. Start with AI
 
-Install it in any Pacto repository (or an empty directory):
+The fastest way to get oriented is to use an AI coding assistant that supports skills. We recommend **Oh My Pi** or **Claude Code**, but any CLI AI editor that loads skill packs works the same way.
 
-```bash
-npx skills add covenant-gov/pacto-dev-env
-```
+1. Install the Pacto skills for your harness. In Claude Code:
 
-Then invoke it from Claude Code:
+   ```bash
+   npx skills add covenant-gov/pacto-dev-env
+   ```
 
-```
-/pacto-dev-env setup
-```
+2. Invoke the `pacto-dev-env` skill. You can use natural language or the slash command:
 
-This will clone `pacto-dev-env` and the sibling Pacto repositories if they are missing, run the host setup script, and start the default Docker stack. Once the stack is running, configure the current repo:
+   ```
+   bootstrap my pacto dev env
+   ```
 
-```
-/pacto-dev-env connect
-```
+   or
+
+   ```
+   /pacto-dev-env setup
+   ```
+
+   The skill starts a short interview, clones `pacto-dev-env` and the sibling Pacto repositories if they are missing, runs the host setup script for your platform, and starts the service stack you need. Once the stack is running, connect the current repo:
+
+   ```
+   /pacto-dev-env connect
+   ```
 
 Other useful invocations:
 
@@ -59,11 +67,9 @@ Other useful invocations:
 /pacto-dev-env troubleshoot ssl
 ```
 
-The skill wraps the existing `make` targets and scripts in this repository; see the sections below for details on each step.
+The skill wraps the existing `make` targets and scripts in this repository. Prefer this path; the manual steps below are documented for contributors who do not use an AI editor.
 
-## Quick start
-
-### 1. Prepare your host
+### 2. Prepare your host
 
 Run the one-shot setup script for your platform. Both scripts are idempotent.
 
@@ -89,7 +95,7 @@ mkcert -install
 
 You only need to do this once. If `mkcert` is not installed, the setup scripts installed it; if you skipped the scripts, see `docs/setup.md` for manual installation.
 
-### 2. Start the services
+### 3. Start the services
 
 ```bash
 cd pacto-dev-env
@@ -104,7 +110,7 @@ the first time.
 If you want everything at once (including Aztec, bunker, and the governance
 seeder), use `make up-all` instead.
 
-### 3. Seed the Pacto governance system (optional)
+### 4. Seed the Pacto governance system (optional)
 
 Required if you are working on governance contracts, bots, or the desktop app
 treasury features:
@@ -118,7 +124,7 @@ and writes deployment artifacts to `./data/deployments/31337/full-system.json`.
 It is idempotent and self-healing: if Anvil is reset, it re-deploys
 automatically.
 
-### 4. Seed a Nave Pirata squad (optional)
+### 5. Seed a Nave Pirata squad (optional)
 
 Required for squad/treasury/mutiny testing:
 
@@ -132,7 +138,7 @@ written to `./data/deployments/31337/squad.json`.
 
 For manual identity creation, see [`docs/workflows.md`](docs/workflows.md).
 
-### 5. Verify everything
+### 6. Verify everything
 
 ```bash
 make check
@@ -141,7 +147,7 @@ make check
 You should see all containers healthy and the services responding. If anything
 is missing, `make check` prints the remediation step for your platform.
 
-### 6. Work on a project
+### 7. Work on a project
 
 With the services running, switch to a sibling repository and start working.
 Quick pointers:
