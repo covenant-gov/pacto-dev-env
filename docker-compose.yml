@@ -67,6 +67,10 @@ services:
     environment:
       PACTO_DATA_DIR: /var/lib/pacto-bot-api
       PACTO_RELAY_URL: ws://nostr-relay:8080
+      PACTO_PROBE_RELAY_URL: http://nostr-relay:8080
+      PACTO_PROBE_NOSTRA_URL: http://nostr-relay:8080
+      PACTO_PROBE_EVM_URL: http://anvil:8545
+      PACTO_PROBE_AZTEC_URL: http://aztec-sandbox:8080
       PACTO_BOT_NPUB: ${PACTO_BOT_NPUB:-}
       PACTO_BOT_NSEC: ${PACTO_BOT_NSEC:-}
     command:
