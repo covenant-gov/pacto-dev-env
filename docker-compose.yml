@@ -257,6 +257,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   nip46-bunker-redis:
     image: redis:8-alpine
@@ -270,6 +271,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   # Optional debugging sidecar. Attach with:
   #   docker compose --profile debug up -d --build
