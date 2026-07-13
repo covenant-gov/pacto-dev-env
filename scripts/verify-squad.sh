@@ -173,7 +173,11 @@ check_registry() {
 
   local -a expected=([0]="$SAFE" [1]="$QUARTERMASTER" [2]="$MUTINY_MODULE" [3]="$TREASURY_AUTHORITY" [4]="$SQUAD_ADMIN")
   local -a actual
-  mapfile -t actual <<< "$reg_addrs"
+  local _line
+  while IFS= read -r _line; do
+    actual+=("$_line")
+  done <<< "$reg_addrs"
+  unset _line
   local mismatch=0
   for i in 0 1 2 3 4; do
     if [ "$(lower "${actual[$i]}")" != "$(lower "${expected[$i]}")" ]; then
@@ -213,7 +217,11 @@ check_safe() {
 
   # getModulesPaginated returns the array on the first line and the next sentinel on the second.
   local -a modules_lines
-  mapfile -t modules_lines <<< "$modules_raw"
+  local _line
+  while IFS= read -r _line; do
+    modules_lines+=("$_line")
+  done <<< "$modules_raw"
+  unset _line
   local modules="${modules_lines[0]:-}"
 
   echo "  Owners:    $owners"
@@ -309,7 +317,11 @@ view_hat_line() {
     return
   fi
   local -a lines
-  mapfile -t lines <<< "$result"
+  local _line
+  while IFS= read -r _line; do
+    lines+=("$_line")
+  done <<< "$result"
+  unset _line
   local details="${lines[0]:-}"
   local max_supply
   max_supply="$(strip_suffix "${lines[1]:-}")"
@@ -462,7 +474,43 @@ enumerate_crew() {
 
   jq -r '.[] | "\(.topics[2]) \(.topics[3]) \(.data)"' <<< "$logs_json" > "$tmp"
 
-  declare -A balances
+  local -a balance_addrs
+  local -a balance_values
+
+  _balance_index() {
+    local target="$1"
+    local i
+    for i in "${!balance_addrs[@]}"; do
+      if [ "$(lower "${balance_addrs[$i]}")" = "$(lower "$target")" ]; then
+        echo "$i"
+        return 0
+      fi
+    done
+    return 1
+  }
+
+  _get_balance() {
+    local target="$1"
+    local idx
+    if idx=$(_balance_index "$target"); then
+      echo "${balance_values[$idx]}"
+    else
+      echo "0"
+    fi
+  }
+
+  _set_balance() {
+    local target="$1"
+    local value="$2"
+    local idx
+    if idx=$(_balance_index "$target"); then
+      balance_values[idx]="$value"
+    else
+      balance_addrs+=("$target")
+      balance_values+=("$value")
+    fi
+  }
+
   local from to data id_hex id_dec
   while read -r from to data; do
     id_hex="0x${data:2:64}"
@@ -473,17 +521,22 @@ enumerate_crew() {
     from=$(topic_to_addr "$from")
     to=$(topic_to_addr "$to")
     if [ "$from" != "0x0000000000000000000000000000000000000000" ]; then
-      balances["$from"]=$((${balances["$from"]:-0} - 1))
+      local current_from
+      current_from="$(_get_balance "$from")"
+      _set_balance "$from" $((current_from - 1))
     fi
-    balances["$to"]=$((${balances["$to"]:-0} + 1))
+    local current_to
+    current_to="$(_get_balance "$to")"
+    _set_balance "$to" $((current_to + 1))
   done < "$tmp"
   rm -f "$tmp"
 
   local found=0
-  for addr in "${!balances[@]}"; do
-    if [ "${balances[$addr]}" -gt 0 ]; then
+  local i
+  for i in "${!balance_addrs[@]}"; do
+    if [ "${balance_values[$i]}" -gt 0 ]; then
       found=1
-      echo "    Crew member: $addr (balance: ${balances[$addr]})"
+      echo "    Crew member: ${balance_addrs[$i]} (balance: ${balance_values[$i]})"
     fi
   done
   if [ "$found" -eq 0 ]; then
