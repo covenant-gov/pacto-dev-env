@@ -78,7 +78,6 @@ start() {
   echo
   echo "[tailscale-serve] Done."
   status
-  print_env
 }
 
 stop() {
@@ -92,6 +91,8 @@ stop() {
 status() {
   require_tailscale
   tailscale serve status
+  echo
+  print_env
 }
 
 print_env() {

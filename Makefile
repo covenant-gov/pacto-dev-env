@@ -19,7 +19,7 @@ tailscale-serve-up: ## Expose Anvil and Nostr relay over your Tailscale tailnet
 tailscale-serve-down: ## Stop exposing Anvil and Nostr relay over Tailscale
 	@./scripts/tailscale-serve.sh stop
 
-tailscale-serve-status: ## Show current Tailscale serve configuration
+tailscale-serve-status: ## Show current Tailscale serve configuration and Pacto URLs
 	@./scripts/tailscale-serve.sh status
 
 help: ## Show this help message and all available targets
