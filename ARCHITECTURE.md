@@ -65,6 +65,19 @@ A `caddy` sidecar is part of the default stack and exposes four TLS endpoints on
 
 `make up` and `make up-all` run `scripts/generate-local-certs.sh` automatically. If `mkcert` is installed (the setup scripts install it), Caddy uses a locally-trusted certificate. If `mkcert` is not available, Caddy falls back to its internal self-signed CA; clients must then skip certificate verification. To trust the mkcert CA in browsers, run `mkcert -install` once after the certificates are generated.
 
+### Bot event visibility in pacto-app
+
+`pacto-app` only auto-adds `ws://localhost:7000` when it is running under
+`tauri:dev` (`import.meta.env.DEV`); an installed/production build never
+connects to the local relay unless a user manually adds it. It does,
+however, always connect to a fixed set of trusted public relays, including
+`wss://jskitty.cat/nostr` (see `TRUSTED_RELAYS`/`DEFAULT_RELAYS` in
+`pacto-app/src-tauri/src/lib.rs`). Bot identities in `pacto-bot-api.toml`
+therefore list both relays — `ws://nostr-relay:8080` for local tooling
+(`websocat`, `nak`, MLS smoke tests) and `wss://jskitty.cat/nostr` so bot
+events and KeyPackages are visible in any pacto-app build without extra
+relay setup.
+
 ## Services
 
 | Service | Default | Profile | Purpose | Image source |

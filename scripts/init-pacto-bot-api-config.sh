@@ -57,7 +57,7 @@ if [ "${PACTO_CREATE_DEV_BOT:-0}" = "1" ]; then
 id = "dev"
 npub = "\${PACTO_BOT_NPUB}"
 signing = { backend = "nsec", nsec = "\${PACTO_BOT_NSEC}" }
-relays = ["ws://nostr-relay:8080"]
+relays = ["ws://nostr-relay:8080", "wss://jskitty.cat/nostr"]
 capabilities = ["ReadMessages", "SendMessages"]
 
 EOF
@@ -74,14 +74,14 @@ elif [ "$CREATED" = "1" ]; then
 id = "default"
 npub = "\${PACTO_BOT_NPUB}"
 signing = { backend = "nsec", nsec = "\${PACTO_BOT_NSEC}" }
-relays = ["ws://nostr-relay:8080"]
+relays = ["ws://nostr-relay:8080", "wss://jskitty.cat/nostr"]
 capabilities = ["ReadMessages", "SendMessages"]
 
 EOF
     echo "Added default bot identity using PACTO_BOT_NSEC and PACTO_BOT_NPUB."
   else
     echo "No PACTO_BOT_NSEC/PACTO_BOT_NPUB set; generated a minimal daemon-only config."
-    echo "Add bot identities later with: pacto-bot-admin new <name> --backend nsec --relays ws://localhost:7000 >> $CONFIG_FILE"
+    echo "Add bot identities later with: pacto-bot-admin new <name> --backend nsec --relays ws://localhost:7000 --relays wss://jskitty.cat/nostr >> $CONFIG_FILE"
   fi
 fi
 
@@ -98,8 +98,8 @@ id = "bosun"
 mls_db_path = "/var/lib/pacto-bot-api/bosun/bosun-mls.db"
 npub = "\${PACTO_BOSUN_NPUB}"
 signing = { backend = "nsec", nsec = "\${PACTO_BOSUN_NSEC}" }
-relays = ["ws://nostr-relay:8080"]
-capabilities = ["ReadMessages", "SendMessages", "ReceiveGroupMessages", "SendGroupMessages", "ManageProfile", "Admin"]
+relays = ["ws://nostr-relay:8080", "wss://jskitty.cat/nostr"]
+capabilities = ["ReadMessages", "SendMessages", "ReceiveGroupMessages", "SendGroupMessages", "ManageProfile", "Admin", "ExitMlsGroup"]
 
 EOF
     echo "Added bosun bot identity with Admin + MLS capabilities."
@@ -116,7 +116,7 @@ id = "captain"
 mls_db_path = "/var/lib/pacto-bot-api/captain/captain-mls.db"
 npub = "\${PACTO_CAPTAIN_NPUB}"
 signing = { backend = "nsec", nsec = "\${PACTO_CAPTAIN_NSEC}" }
-relays = ["ws://nostr-relay:8080"]
+relays = ["ws://nostr-relay:8080", "wss://jskitty.cat/nostr"]
 capabilities = ["ReadMessages", "SendMessages", "ReceiveGroupMessages", "SendGroupMessages"]
 
 EOF
