@@ -145,6 +145,7 @@ services:
       dockerfile: anvil.Dockerfile
     image: pacto-anvil:local
     pull_policy: if_not_present
+    command:
       - "--block-time"
       - "2"
       - "--host"

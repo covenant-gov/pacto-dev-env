@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Fix broken `docker-compose.yml`: the `anvil` service was missing its `command:` key, so `--block-time`/`--host`/`--port` flags were swallowed into `pull_policy` and `docker compose up`/`make up` never actually configured Anvil. `docker compose config` now validates and Anvil starts with the intended flags.
 - Add a Claude Code skill under `skills/pacto-dev-env/` that bootstraps the local workspace from any Pacto repo (or an empty directory). Install with `npx skills add covenant-gov/pacto-dev-env`, then use `/pacto-dev-env setup` to clone the dev environment and sibling repos, run the host setup script, and start the stack. Use `/pacto-dev-env connect` to configure the current repo, `/pacto-dev-env status` to check health, and `/pacto-dev-env troubleshoot ssl` for Caddy certificate issues.
 - Add `docker/debug.Dockerfile` and a `debug` Compose profile with network/WebSocket debugging tools (`websocat`, `socat`, `curl`, `jq`, `nc`, `psql`, `redis-cli`, `ping`, `dig`).
 - Install debugging utilities (`socat`, `websocat`, `jq`, `netcat-openbsd`) via the Ubuntu setup script and add a missing `verify_install()` step.
