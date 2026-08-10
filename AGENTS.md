@@ -61,7 +61,7 @@ Generate `pacto-bot-api.toml` from the example (the real file must be kept secre
 cp pacto-bot-api.toml.example pacto-bot-api.toml
 chmod 600 pacto-bot-api.toml
 # Add bot identities with `pacto-bot-admin`, e.g.:
-# pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000 >> pacto-bot-api.toml
+# pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000 --relays wss://jskitty.cat/nostr >> pacto-bot-api.toml
 
 make up          # default stack: relay + anvil + pacto-bot-api
 make up-all      # default stack + aztec + bunker + seed

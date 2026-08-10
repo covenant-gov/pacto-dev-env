@@ -19,5 +19,5 @@ socket_path = "/var/lib/pacto-bot-api/pacto-bot-api.sock"
 # id = "bosun"
 # npub = "${PACTO_BOT_NPUB}"
 # signing = { backend = "nsec", nsec = "${PACTO_BOT_NSEC}" }
-# relays = ["ws://nostr-relay:8080"]
+# relays = ["ws://nostr-relay:8080", "wss://jskitty.cat/nostr"]
 # capabilities = ["ReadMessages", "SendMessages"]
