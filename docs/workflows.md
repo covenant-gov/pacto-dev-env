@@ -40,7 +40,7 @@ Open **Settings → Nostr** and add a custom relay:
 - URL: `wss://localhost:7001`
 - Mode: `both` (read + write)
 
-The app also accepts the plain WebSocket endpoint `ws://localhost:7000`. On first login, the in-app `local-dev-setup.ts` helper automatically adds `ws://localhost:7000` when it detects a local dev environment.
+A plaintext endpoint is also published on `ws://localhost:7002`, but it is intended for host-side CLI tooling (`websocat`, `nak`) rather than the app — pacto-app is expected to drop support for non-`wss` relay URLs. Port 7000 is unreliable on macOS, where ControlCenter/AirPlay squats `*:7000`.
 
 ### EVM RPC
 
@@ -58,7 +58,7 @@ Then import the default Anvil private key for a test account:
 
 ### TLS trust
 
-If Caddy is using its self-signed CA (the default when `mkcert` is not installed), clients must skip TLS verification or trust the certificate. With `mkcert` installed, run `mkcert -install` once so browsers and system certificate stores trust the local CA.
+Trusting the local CA at the OS level is necessary but **not sufficient for `pacto-app`**. Run `mkcert -install` once (or `caddy trust` when Caddy's internal CA is the fallback) so browsers and system certificate stores trust the local CA — then note that the app additionally needs a debug build carrying its `local-relay-tls` feature, because its relay websocket compiles in the Mozilla root set and never reads the OS trust store. Without that feature you get `invalid peer certificate: UnknownIssuer` even though `openssl` and `curl` validate the same endpoint. See [troubleshooting](troubleshooting.md#invalid-peer-certificate-unknownissuer).
 
 ### Optional: Aztec sandbox
 

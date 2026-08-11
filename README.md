@@ -15,7 +15,8 @@ The default stack starts three services plus a Caddy TLS sidecar:
 
 | Service | Endpoint | Purpose |
 |---|---|---|
-| Nostr relay | `ws://localhost:7000` | Decentralized messaging relay |
+| Nostr relay over TLS | `wss://localhost:7001` | Relay via Caddy; the endpoint dev sandboxes use |
+| Nostr relay (plaintext) | `ws://localhost:7002` | Host-side CLI tooling only; 7000 is squatted by ControlCenter on macOS |
 | Anvil EVM testnet | `http://localhost:8545` | Local EVM chain (chain ID 31337) |
 | Anvil EVM testnet over TLS | `https://localhost:8546` | Anvil via Caddy reverse proxy |
 | `pacto-bot-api` | Unix socket in `pacto-bot-api-data` | Bot handler daemon |

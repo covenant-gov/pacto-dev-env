@@ -7,8 +7,34 @@
 
 ## `pacto-app` cannot connect to the local relay
 
-- Verify the relay is listening: `curl http://localhost:7000` should return a relay message.
-- In Pacto settings, add `ws://localhost:7000` as a relay.
+- Verify the relay is listening: `curl -H "Accept: application/nostr+json" http://localhost:7002` returns its NIP-11 document. Use 7002 rather than 7000 — on macOS, ControlCenter/AirPlay squats `*:7000`, so `localhost:7000` may answer `403` from that process instead of the relay.
+- Point the sandbox at `wss://localhost:7001` (`PACTO_TRUSTED_RELAYS`), or add it in Pacto settings as a custom relay in `both` mode.
+
+### `invalid peer certificate: UnknownIssuer`
+
+**Installing the CA again will not fix this, and neither will switching between `mkcert -install` and `caddy trust`.** Trusting the local CA at the OS level is necessary but not sufficient, which is what makes this failure so confusing: every other client on the machine works.
+
+You can confirm the OS side is already correct while the app still fails:
+
+```bash
+openssl s_client -connect localhost:7001 -servername localhost </dev/null 2>&1 | grep "Verify return code"
+# Verify return code: 0 (ok)
+curl -o /dev/null -w '%{http_code}\n' https://localhost:7001/
+# 200
+```
+
+The app's relay websocket resolves through `nostr-sdk` -> `async-wsocket` -> `tokio-tungstenite`, and `async-wsocket` pins that dependency to `rustls-tls-webpki-roots`. rustls with webpki roots is a **hermetic** trust store by design: the store is built from `RootCertStore::empty()` and populated only from the Mozilla root list compiled into the binary. `load_native_certs()` — the function that would read your keychain — is not compiled in, so no OS trust store is ever consulted at runtime.
+
+The fix is therefore a build flag, not a trust command. A debug `pacto-app` build must carry its `local-relay-tls` feature, which additionally enables `rustls-tls-native-roots`. `tokio-tungstenite` builds its root store additively, so the OS store is consulted *alongside* the bundled Mozilla roots and the local CA validates.
+
+Both halves are required:
+
+| Half | How | Symptom if missing |
+|---|---|---|
+| CA in the OS trust store | `mkcert -install` (or `caddy trust` for Caddy's internal CA) | `UnknownIssuer`, and `openssl`/`curl` fail too |
+| App reads the OS trust store | debug build with `local-relay-tls` | `UnknownIssuer`, but `openssl`/`curl` succeed |
+
+The second row is the case almost everyone hits. Release builds intentionally do not enable the feature: it would widen relay TLS trust to every CA the host trusts.
 
 ## Foundry/Anvil deployment fails
 

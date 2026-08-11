@@ -28,7 +28,9 @@ The dev environment uses Caddy to terminate TLS for all Pacto-facing endpoints. 
 mkcert -install
 ```
 
-You only need to do this once per machine. It installs the local CA in your browser and system certificate stores so the Pacto app, `curl`, and other clients trust `https://localhost` and `wss://localhost` URLs without disabling verification.
+You only need to do this once per machine. It installs the local CA in your browser and system certificate stores so `curl`, `openssl`, browsers, and other clients that consult the OS trust store accept `https://localhost` and `wss://localhost` URLs without disabling verification.
+
+**`pacto-app` is the exception and needs a second step.** Its relay websocket compiles in the Mozilla root set and never reads the OS trust store, so a debug build must also carry its `local-relay-tls` feature before `wss://localhost:7001` will validate. Installing the CA again does not help. See [troubleshooting](troubleshooting.md#invalid-peer-certificate-unknownissuer).
 
 If you skip this step, `make up` still works — Caddy falls back to its internal self-signed CA — but clients will need to skip TLS verification or manually trust the certificate.
 
