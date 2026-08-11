@@ -8,7 +8,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group invite-squad build-pacto-bot-api publish-key-package check-group pacto-connect tailscale-serve-up tailscale-serve-down tailscale-serve-status world-manifest check-world-manifest test-world
+.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group invite-squad build-pacto-bot-api publish-key-package check-group pacto-connect tailscale-serve-up tailscale-serve-down tailscale-serve-status world-manifest check-world-manifest test-world world-env dev-world dev-world-reclaim
 
 pacto-connect: ## Print Pacto connection instructions using wss/https endpoints
 	@./scripts/pacto-connect.sh
@@ -135,3 +135,12 @@ check-world-manifest: ## Validate a generated world manifest and sidecar against
 test-world: ## Run the world manifest and identity derivation test suite
 	@./test/world-derivation.test.sh
 	@./test/world-schema.test.sh
+
+world-env: ## Print export lines for local-chain contract addresses from the deployment artifact
+	@./scripts/world-env.sh
+
+dev-world: ## Take this worktree from a running stack to a populated, joined squad
+	@./scripts/dev-world.sh
+
+dev-world-reclaim: ## Remove exactly what this worktree's sandbox created, and free its port index
+	@./scripts/dev-world-reclaim.sh

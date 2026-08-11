@@ -163,10 +163,11 @@ check_cross_document() {
 
 # check_identity_correspondence <sidecar.json>
 # Verifies each sidecar identity is cryptographically self-consistent: the
-# nsec decodes to ethPrivateKey, the nsec's public key re-encodes to the
-# recorded npub, and `cast wallet address` on the private key reproduces the
-# recorded ethAddress. Catches a sidecar whose fields were hand-edited or
-# copied from a different identity but still happen to pass schema checks.
+# mnemonic is the root, so nsec/npub must re-derive at m/44'/1237'/0'/0/0
+# (NIP-06) and ethPrivateKey must re-derive at m/44'/60'/0'/0/0, with
+# `cast wallet address` on that key reproducing the recorded ethAddress.
+# Catches a sidecar whose fields were hand-edited or copied from a
+# different identity but still happen to pass schema checks.
 check_identity_correspondence() {
   local sidecar="$1" output status=0
   output="$(SCRIPT_DIR="$SCRIPT_DIR" python3 - "$sidecar" <<'PYEOF' 2>&1
@@ -195,34 +196,40 @@ identities = json.loads(sidecar_path.read_text())["identities"]
 problems = []
 for identity in identities:
     name = identity["name"]
+    mnemonic = identity["mnemonic"]
     nsec = identity["nsec"]
     npub = identity["npub"]
     eth_address = identity["ethAddress"]
     eth_private_key = identity["ethPrivateKey"]
 
-    try:
-        hex_key = derive_eth.decode_nsec_hex(nsec)
-    except ValueError as exc:
-        problems.append(f"{name}: invalid nsec: {exc}")
-        continue
+    seed = derive_identity.bip39_seed(mnemonic)
+    nostr_secret = derive_identity._bip32_derive_path(seed, derive_identity.NOSTR_PATH)
+    eth_secret = derive_identity._bip32_derive_path(seed, derive_identity.EVM_PATH)
 
-    expected_priv = "0x" + hex_key
-    if eth_private_key.lower() != expected_priv.lower():
+    expected_nsec = derive_identity.bech32_encode("nsec", nostr_secret)
+    if expected_nsec != nsec:
         problems.append(
-            f"{name}: ethPrivateKey ({eth_private_key}) does not decode from nsec "
-            f"(expected {expected_priv})"
+            f"{name}: nsec ({nsec}) does not derive from mnemonic at {derive_identity.NOSTR_PATH} "
+            f"(expected {expected_nsec})"
         )
 
-    recomputed_npub = derive_identity.bech32_encode(
-        "npub", derive_identity.x_only_pubkey(bytes.fromhex(hex_key))
+    expected_npub = derive_identity.bech32_encode(
+        "npub", derive_identity.x_only_pubkey(nostr_secret)
     )
-    if recomputed_npub != npub:
+    if expected_npub != npub:
         problems.append(
-            f"{name}: npub ({npub}) does not correspond to nsec (expected {recomputed_npub})"
+            f"{name}: npub ({npub}) does not correspond to nsec (expected {expected_npub})"
+        )
+
+    expected_eth_private_key = "0x" + eth_secret.hex()
+    if expected_eth_private_key.lower() != eth_private_key.lower():
+        problems.append(
+            f"{name}: ethPrivateKey ({eth_private_key}) does not derive from mnemonic at "
+            f"{derive_identity.EVM_PATH} (expected {expected_eth_private_key})"
         )
 
     try:
-        cast_address = derive_eth.derive_address(nsec)
+        cast_address = derive_eth.address_from_private_key_hex(eth_secret.hex())
     except RuntimeError as exc:
         problems.append(f"{name}: cast failed to derive address: {exc}")
         continue
@@ -240,7 +247,7 @@ PYEOF
   )" || status=$?
 
   if [[ "$status" -eq 0 ]]; then
-    pass "sidecar identities cryptographically correspond (nsec -> npub/ethAddress/ethPrivateKey)"
+    pass "sidecar identities cryptographically correspond (mnemonic -> nsec/npub/ethAddress/ethPrivateKey)"
     return 0
   fi
   fail "sidecar identity correspondence check failed:"

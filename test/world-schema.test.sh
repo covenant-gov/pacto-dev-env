@@ -45,6 +45,7 @@ NPUB_TAIL="$(printf '%s' "${CHARSET}${CHARSET}" | cut -c1-58)"
 HEXCHARS="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 ETH40="$(printf '%s' "$HEXCHARS" | cut -c1-40)"
 HEX64="$(printf '%s' "$HEXCHARS" | cut -c1-64)"
+MNEMONIC="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 
 valid_manifest() {
   cat <<JSON
@@ -80,6 +81,7 @@ valid_sidecar() {
   "identities": [
     {
       "name": "bosun",
+      "mnemonic": "${MNEMONIC}",
       "npub": "npub1${NPUB_TAIL}",
       "nsec": "nsec1${NPUB_TAIL}",
       "ethAddress": "0x${ETH40}",
@@ -262,6 +264,28 @@ case_valid_sidecar_schema() {
   fi
 }
 
+case_sidecar_missing_mnemonic() {
+  local f="$TMPDIR/sidecar-missing-mnemonic.json"
+  valid_sidecar | jq 'del(.identities[0].mnemonic)' >"$f"
+  run_validate "$SS_SCHEMA" "$f"
+  if [[ "$LAST_STATUS" -eq 1 ]] && grep -q 'mnemonic' <<<"$LAST_OUTPUT"; then
+    pass "sidecar identity missing mnemonic fails validation"
+  else
+    fail "expected missing-mnemonic rejection: exit $LAST_STATUS, output: $LAST_OUTPUT"
+  fi
+}
+
+case_sidecar_malformed_mnemonic() {
+  local f="$TMPDIR/sidecar-malformed-mnemonic.json"
+  valid_sidecar | jq '.identities[0].mnemonic = "only three words"' >"$f"
+  run_validate "$SS_SCHEMA" "$f"
+  if [[ "$LAST_STATUS" -eq 1 ]] && grep -q 'mnemonic' <<<"$LAST_OUTPUT"; then
+    pass "sidecar mnemonic with the wrong word count fails the 12-word pattern"
+  else
+    fail "expected malformed-mnemonic rejection: exit $LAST_STATUS, output: $LAST_OUTPUT"
+  fi
+}
+
 case_nonexistent_schema() {
   local f="$TMPDIR/valid-manifest-for-404.json"
   valid_manifest >"$f"
@@ -404,6 +428,7 @@ JSON
     recipe: "pacto-dev-world/v1",
     identities: [{
       name: "bosun",
+      mnemonic: $id.mnemonic,
       npub: $id.npub,
       nsec: $id.nsec,
       ethAddress: $id.ethAddress,
@@ -501,6 +526,8 @@ main() {
   case_boolean_for_integer
   case_multiple_violations
   case_valid_sidecar_schema
+  case_sidecar_missing_mnemonic
+  case_sidecar_malformed_mnemonic
   case_nonexistent_schema
   case_unsupported_keyword_optional_property
   case_pattern_anchor_rejects_trailing_newline

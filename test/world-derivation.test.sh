@@ -188,6 +188,111 @@ PYEOF
   fi
 }
 
+check_bip39_golden_vector() {
+  echo "Checking BIP-39 entropy-to-mnemonic against the canonical all-zero vector..."
+  local expected="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+  local result
+  result=$(python3 - "$DERIVE" <<'PYEOF'
+import importlib.util, sys
+
+spec = importlib.util.spec_from_file_location("derive_identity", sys.argv[1])
+di = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(di)
+
+print(di.entropy_to_mnemonic(bytes(16)))
+PYEOF
+)
+  if [ "$result" = "$expected" ]; then
+    pass "16 zero bytes of entropy produce the canonical 'abandon...about' mnemonic"
+  else
+    fail "expected '$expected', got '$result'"
+  fi
+}
+
+check_bip44_eth_golden_vector() {
+  echo "Checking BIP-32 m/44'/60'/0'/0/0 against the canonical Foundry/cast address..."
+  local expected="0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+  local result
+  result=$(python3 - "$DERIVE" <<'PYEOF'
+import importlib.util, sys
+
+spec = importlib.util.spec_from_file_location("derive_identity", sys.argv[1])
+di = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(di)
+
+mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+seed = di.bip39_seed(mnemonic)
+eth_secret = di._bip32_derive_path(seed, di.EVM_PATH)
+print(di._eth.address_from_private_key_hex(eth_secret.hex()))
+PYEOF
+)
+  if [ "$result" = "$expected" ]; then
+    pass "abandon...about at m/44'/60'/0'/0/0 matches the well-known Foundry/cast vector ($expected)"
+  else
+    fail "expected '$expected', got '$result' -- this is the same vector pacto-app pins in evm_keys.rs"
+  fi
+}
+
+check_cast_cross_check() {
+  echo "Cross-checking a real derived persona's EVM address against 'cast wallet address --mnemonic'..."
+  if ! command -v cast >/dev/null 2>&1; then
+    warn "cast not found on PATH; skipping live cross-check"
+    return
+  fi
+  local identity mnemonic derived_addr cast_addr
+  identity=$(python3 "$DERIVE" --root-seed "$ROOT_SEED" --recipe "$RECIPE" --label bosun --json)
+  mnemonic=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['mnemonic'])" "$identity")
+  derived_addr=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['ethAddress'])" "$identity")
+  cast_addr=$(cast wallet address --mnemonic "$mnemonic")
+  if [ "$derived_addr" = "$cast_addr" ]; then
+    pass "derived ethAddress ($derived_addr) matches 'cast wallet address --mnemonic' for the same phrase"
+  else
+    fail "derived ethAddress ($derived_addr) disagrees with cast ($cast_addr) for phrase '$mnemonic'"
+  fi
+}
+
+check_nostr_sdk_cross_check() {
+  echo "Checking npub against nostr-sdk's own NIP-06 derivation (requires cargo)..."
+  if ! command -v cargo >/dev/null 2>&1; then
+    warn "cargo not found on PATH; skipping live nostr-sdk cross-check"
+    return
+  fi
+  local identity mnemonic derived_npub project_dir sdk_npub
+  identity=$(python3 "$DERIVE" --root-seed "$ROOT_SEED" --recipe "$RECIPE" --label bosun --json)
+  mnemonic=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['mnemonic'])" "$identity")
+  derived_npub=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['npub'])" "$identity")
+
+  project_dir="$TMP_DIR/nip06check"
+  mkdir -p "$project_dir/src"
+  cat >"$project_dir/Cargo.toml" <<CARGOEOF
+[package]
+name = "nip06check"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nostr-sdk = { version = "0.44.1", features = ["nip06"] }
+CARGOEOF
+  cat >"$project_dir/src/main.rs" <<RSEOF
+use nostr_sdk::prelude::*;
+fn main() {
+    let phrase = std::env::args().nth(1).expect("phrase arg");
+    let keys = Keys::from_mnemonic(phrase, None).expect("derive");
+    println!("{}", keys.public_key().to_bech32().unwrap());
+}
+RSEOF
+  if sdk_npub=$(cd "$project_dir" && cargo run --quiet -- "$mnemonic" 2>/dev/null); then
+    if [ "$derived_npub" = "$sdk_npub" ]; then
+      pass "derived npub ($derived_npub) matches nostr-sdk's Keys::from_mnemonic for the same phrase"
+    else
+      fail "derived npub ($derived_npub) disagrees with nostr-sdk ($sdk_npub) for the same phrase"
+    fi
+  else
+    warn "could not build/run the throwaway nostr-sdk cross-check project; skipping"
+  fi
+  rm -rf "$project_dir"
+}
+
 check_generator_e2e_determinism() {
   echo "Checking generate-world-manifest.sh idempotence for WORLD=default..."
   local manifest="$REPO_ROOT/data/world/default/world-state.json"
@@ -249,6 +354,31 @@ print(sum(1 for p in d['personas'] if p.get('sandboxOnly') is True))
   else
     fail "only $sandbox_only_count of $persona_count personas carry sandboxOnly: true"
   fi
+
+  local identity_count mnemonic_word_ok_count
+  identity_count=$(python3 -c "import json; print(len(json.load(open('$sidecar'))['identities']))")
+  mnemonic_word_ok_count=$(python3 -c "
+import json
+d = json.load(open('$sidecar'))
+print(sum(1 for i in d['identities'] if len(i.get('mnemonic', '').split()) == 12))
+")
+  if [ "$identity_count" -gt 0 ] && [ "$mnemonic_word_ok_count" = "$identity_count" ]; then
+    pass "every identity ($identity_count) carries a 12-word mnemonic"
+  else
+    fail "only $mnemonic_word_ok_count of $identity_count identities carry a 12-word mnemonic"
+  fi
+
+  if grep -qiE "mnemonic|nsec1|PrivateKey" "$manifest"; then
+    fail "world-state.json (public manifest) leaks signing material (mnemonic/nsec/private key)"
+  else
+    pass "world-state.json contains no mnemonic, nsec, or private key"
+  fi
+
+  if git -C "$REPO_ROOT" check-ignore -q "$sidecar"; then
+    pass "world-secrets.json is still gitignored after regeneration"
+  else
+    fail "world-secrets.json is not gitignored after regeneration"
+  fi
 }
 
 check_missing_world_file() {
@@ -277,6 +407,10 @@ main() {
   check_is_valid_scalar
   check_bech32_roundtrip
   check_known_answer
+  check_bip39_golden_vector
+  check_bip44_eth_golden_vector
+  check_cast_cross_check
+  check_nostr_sdk_cross_check
   check_generator_e2e_determinism
   check_missing_world_file
 
