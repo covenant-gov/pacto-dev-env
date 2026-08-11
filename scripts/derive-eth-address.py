@@ -5,6 +5,10 @@ This matches the derivation used by the covenant-gov/nostr-k-derivs Rust crate:
 the Nostr private key bytes are used directly as the Ethereum private key, and
 the standard secp256k1 -> Keccak-256 -> last-20-bytes address is produced.
 
+Also exports `address_from_private_key_hex`, a generic raw-key -> address
+helper (via `cast`) that scripts/derive-identity.py uses for BIP-32-derived
+EVM keys that never pass through an nsec.
+
 Usage:
     scripts/derive-eth-address.py nsec1...
 
@@ -78,8 +82,7 @@ def decode_nsec_hex(nsec):
     return bytes(payload).hex()
 
 
-def derive_address(nsec):
-    hex_key = decode_nsec_hex(nsec)
+def address_from_private_key_hex(hex_key: str) -> str:
     result = subprocess.run(
         ["cast", "wallet", "address", "--private-key", f"0x{hex_key}"],
         capture_output=True,
@@ -89,6 +92,11 @@ def derive_address(nsec):
     if result.returncode != 0:
         raise RuntimeError(f"cast failed: {result.stderr.strip()}")
     return result.stdout.strip()
+
+
+def derive_address(nsec):
+    hex_key = decode_nsec_hex(nsec)
+    return address_from_private_key_hex(hex_key)
 
 
 def main():

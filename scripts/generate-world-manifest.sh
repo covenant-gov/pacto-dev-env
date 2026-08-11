@@ -135,6 +135,7 @@ for i, entry in enumerate(cast):
     })
     identities.append({
         "name": persona_name,
+        "mnemonic": identity["mnemonic"],
         "npub": identity["npub"],
         "nsec": identity["nsec"],
         "ethAddress": identity["ethAddress"],

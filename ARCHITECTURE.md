@@ -361,6 +361,69 @@ forward: same recipe, same cast, same identities every time. Wiring
 `pacto-bot-api.toml` generation from the manifest is a later unit and is
 **not** done here.
 
+## Dev world
+
+`make dev-world` takes a machine from "the stack is running" to "this worktree
+has a populated, joined squad." It is the one command an agent or a developer
+runs after `make up`.
+
+The run is a sequence of named gates, and the failure modes are the point: a
+silent hang at keypackage propagation is the outcome this verb exists to
+prevent. Each gate prints `[gate:<name>] passed`, and a failure exits non-zero
+with `[gate:<name>] FAILED:` plus what was observed instead.
+
+| Gate | Passes when |
+|---|---|
+| `docker` | Docker is installed and answering |
+| `stack-ready` | `verify-stack.sh`'s checks pass, distinguishing a down stack from a silent bot daemon |
+| `seed` | Governance contracts are deployed and live on the chain |
+| `app-launch` | The sandbox app is up and authenticated |
+| `keypackage-resolvable` | The bot can *resolve* the sandbox's keypackage, not merely see it on a relay |
+| `squad-invited` | The bot created the squad and published the `squad_invite` DM |
+| `welcome-accepted` | The invite was accepted and the group is joined |
+| `history-visible` | Squad history and the DM backlog are retrievable by the sandbox |
+
+Post-join content comes last on purpose: forward secrecy hides pre-join
+messages from a new member, so history generated before the join is invisible
+afterwards.
+
+Re-running is safe. Each state-changing gate checks before acting, so an
+already-populated sandbox re-enters at the first unsatisfied gate instead of
+minting a second squad, and a run that failed midway resumes at the gate that
+failed. `PACTO_DEV_WORLD_STOP_AFTER=<gate>` stops cleanly once that gate
+passes, which is how the gates are exercised without booting an app.
+
+Concurrency isolation is inherited, not reinvented: pacto-app's
+`scripts/dev-ports.mjs` hashes the branch slug into a sandbox root and port
+set, so two worktrees each land in their own squad and neither sees the other.
+
+### Sandbox reclaim
+
+`make dev-world-reclaim` removes exactly what one sandbox created: its data
+directory, its port-index claim, and its squad. Everything is read from the
+sandbox handle rather than inferred, and the delete refuses outright when the
+resolved path is not inside a sandbox root. Every step tolerates its target
+already being gone, so a second run is a clean no-op and the shared stack and
+any concurrent sandbox are untouched.
+
+The bot-side drop goes through `pacto-bot-admin mls-group delete`, which is
+idempotent: a group that is already gone counts as success. A failure there is
+reported but does not fail the reclaim, because the sandbox's own state is
+already removed by that point and a lingering bot-side group is recoverable
+while a half-reclaimed sandbox is not.
+
+### Commands
+
+```bash
+make dev-world          # stack -> populated, joined squad for this worktree
+make dev-world-reclaim  # remove this worktree's sandbox and free its index
+make world-env          # print local-chain address exports from the deployment artifact
+```
+
+`PACTO_APP_DIR` locates the pacto-app worktree, defaulting to the sibling
+checkout. The pacto-app repo has matching `dev-world` and `dev-world-reclaim`
+aliases that pass their own directory, so a worktree drives its own sandbox.
+
 ## Security model
 
 - **Localhost-only by default.** Host-facing ports are mapped to `127.0.0.1` so services are not exposed to the LAN.

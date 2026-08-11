@@ -110,7 +110,7 @@
         "ethAddress": {
           "type": "string",
           "pattern": "^0x[0-9a-fA-F]{40}$",
-          "description": "Ethereum address derived from the same key material, matching the nostr-k-derivs scheme."
+          "description": "Ethereum address derived from the persona's mnemonic at m/44'/60'/0'/0/0, matching pacto-app's phrase-derived v1 EVM key."
         },
         "botId": {
           "type": "string",
