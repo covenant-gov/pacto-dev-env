@@ -275,6 +275,7 @@ case_sidecar_mode_function() {
 
   chmod 600 "$f"
   local result600
+  # shellcheck source=scripts/check-world-manifest.sh
   if (source "$CHECK_SCRIPT"; check_sidecar_mode "$f") >/dev/null 2>&1; then
     result600=0
   else
@@ -283,6 +284,7 @@ case_sidecar_mode_function() {
 
   chmod 644 "$f"
   local result644
+  # shellcheck source=scripts/check-world-manifest.sh
   if (source "$CHECK_SCRIPT"; check_sidecar_mode "$f") >/dev/null 2>&1; then
     result644=0
   else
