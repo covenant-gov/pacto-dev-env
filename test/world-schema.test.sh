@@ -24,11 +24,15 @@ CHECK_SCRIPT="$REPO_ROOT/scripts/check-world-manifest.sh"
 
 TMPDIR="$(mktemp -d)"
 FIXTURE_WORLD_DIRS=()
+FIXTURE_WORLD_FILES=()
 cleanup() {
   rm -rf "$TMPDIR"
-  local dir
+  local dir file
   for dir in "${FIXTURE_WORLD_DIRS[@]:-}"; do
     [[ -n "$dir" ]] && rm -rf "$dir"
+  done
+  for file in "${FIXTURE_WORLD_FILES[@]:-}"; do
+    [[ -n "$file" ]] && rm -f "$file"
   done
   return 0
 }
@@ -269,6 +273,41 @@ case_nonexistent_schema() {
   fi
 }
 
+case_unsupported_keyword_optional_property() {
+  local schema="$TMPDIR/unsupported-keyword-schema.json"
+  local instance="$TMPDIR/unsupported-keyword-instance.json"
+  cat >"$schema" <<'JSON'
+{
+  "type": "object",
+  "properties": {
+    "note": { "type": "string", "format": "date-time" }
+  }
+}
+JSON
+  echo '{}' >"$instance"
+  run_validate "$schema" "$instance"
+  if [[ "$LAST_STATUS" -eq 2 ]] && grep -q 'format' <<<"$LAST_OUTPUT"; then
+    pass "unsupported keyword under an optional, instance-omitted property is refused (schema shape check does not depend on which instance keys are present)"
+  else
+    fail "expected exit 2 for unsupported keyword under an omitted optional property: exit $LAST_STATUS, output: $LAST_OUTPUT"
+  fi
+}
+
+case_pattern_anchor_rejects_trailing_newline() {
+  local schema="$TMPDIR/hex-pattern-schema.json"
+  local instance="$TMPDIR/hex-pattern-instance.json"
+  cat >"$schema" <<'JSON'
+{ "type": "string", "pattern": "^0x[0-9a-f]{4}$" }
+JSON
+  jq -n '"0xdead\n"' >"$instance"
+  run_validate "$schema" "$instance"
+  if [[ "$LAST_STATUS" -eq 1 ]]; then
+    pass "pattern ending in an unescaped \$ rejects a value with a trailing newline"
+  else
+    fail "expected exit 1 for trailing-newline bypass of a \$-anchored pattern: exit $LAST_STATUS, output: $LAST_OUTPUT"
+  fi
+}
+
 case_sidecar_mode_function() {
   local f="$TMPDIR/mode-sidecar.json"
   valid_sidecar >"$f"
@@ -300,24 +339,88 @@ case_sidecar_mode_function() {
   fi
 }
 
-# make_fixture_world <name-suffix> — writes manifest+sidecar fixtures under
-# data/world/<world> (already gitignored) and registers the dir for cleanup.
+# make_fixture_world <name-suffix> — writes a committed-looking recipe under
+# worlds/<world>.world.json plus matching manifest/sidecar under
+# data/world/<world>/ using a real derived identity (needed for the
+# correspondence + recipe-drift layers). Registers paths for cleanup.
 # Echoes the world name.
 make_fixture_world() {
   local world="world-schema-test-$1-$$"
   local dir="$REPO_ROOT/data/world/$world"
+  local recipe_file="$REPO_ROOT/worlds/$world.world.json"
+  local identity_json
   mkdir -p "$dir"
-  echo "$world"
+  FIXTURE_WORLD_DIRS+=("$dir")
+  FIXTURE_WORLD_FILES+=("$recipe_file")
+
+  identity_json="$(python3 "$REPO_ROOT/scripts/derive-identity.py" \
+    --root-seed "world-schema-test-seed-$$" \
+    --recipe "pacto-dev-world/v1" \
+    --label bosun \
+    --json)"
+
+  cat >"$recipe_file" <<JSON
+{
+  "recipe": "pacto-dev-world/v1",
+  "devRootSeed": "world-schema-test-seed-$$",
+  "world": {
+    "name": "$world",
+    "relayEndpoint": "wss://localhost:7001",
+    "chain": { "endpoint": "http://localhost:8545", "chainId": 31337 }
+  },
+  "cast": [
+    {
+      "name": "bosun",
+      "role": "steward",
+      "botId": "bosun",
+      "squadRole": "admin"
+    }
+  ]
+}
+JSON
+
+  jq -n --argjson id "$identity_json" --arg world "$world" '{
+    manifestVersion: 1,
+    recipe: { id: "pacto-dev-world/v1", public: true },
+    world: {
+      name: $world,
+      relayEndpoint: "wss://localhost:7001",
+      chain: { endpoint: "http://localhost:8545", chainId: 31337 }
+    },
+    personas: [{
+      name: "bosun",
+      role: "steward",
+      npub: $id.npub,
+      ethAddress: $id.ethAddress,
+      botId: "bosun",
+      squadRole: "admin",
+      derivation: { recipe: "pacto-dev-world/v1", label: "bosun" },
+      sandboxOnly: true
+    }]
+  }' >"$dir/world-state.json"
+
+  jq -n --argjson id "$identity_json" '{
+    manifestVersion: 1,
+    recipe: "pacto-dev-world/v1",
+    identities: [{
+      name: "bosun",
+      npub: $id.npub,
+      nsec: $id.nsec,
+      ethAddress: $id.ethAddress,
+      ethPrivateKey: $id.ethPrivateKey,
+      sandboxOnly: true
+    }]
+  }' >"$dir/world-secrets.json"
+  chmod 600 "$dir/world-secrets.json"
+
+  LAST_FIXTURE_WORLD="$world"
 }
 
 case_cross_document_valid_passes() {
   local world dir status output
-  world="$(make_fixture_world valid)"
+  make_fixture_world valid
+  world="$LAST_FIXTURE_WORLD"
   dir="$REPO_ROOT/data/world/$world"
-  FIXTURE_WORLD_DIRS+=("$dir")
-  valid_manifest >"$dir/world-state.json"
-  valid_sidecar >"$dir/world-secrets.json"
-  chmod 600 "$dir/world-secrets.json"
 
   if output="$(WORLD="$world" "$CHECK_SCRIPT" 2>&1)"; then
     status=0
@@ -334,12 +437,13 @@ case_cross_document_valid_passes() {
 
 case_cross_document_identity_count() {
   local world dir status output
-  world="$(make_fixture_world identity-count)"
+  make_fixture_world identity-count
+  world="$LAST_FIXTURE_WORLD"
   dir="$REPO_ROOT/data/world/$world"
-  FIXTURE_WORLD_DIRS+=("$dir")
-  valid_manifest >"$dir/world-state.json"
   # Sidecar carries an extra identity absent from the manifest's one persona.
-  jq '.identities += [.identities[0] + {name: "captain"}]' <(valid_sidecar) >"$dir/world-secrets.json"
+  jq '.identities += [.identities[0] + {name: "captain"}]' \
+    "$dir/world-secrets.json" >"$dir/world-secrets.json.tmp"
+  mv "$dir/world-secrets.json.tmp" "$dir/world-secrets.json"
   chmod 600 "$dir/world-secrets.json"
 
   if output="$(WORLD="$world" "$CHECK_SCRIPT" 2>&1)"; then
@@ -357,12 +461,13 @@ case_cross_document_identity_count() {
 
 case_cross_document_value_mismatch() {
   local world dir status output
-  world="$(make_fixture_world value-mismatch)"
+  make_fixture_world value-mismatch
+  world="$LAST_FIXTURE_WORLD"
   dir="$REPO_ROOT/data/world/$world"
-  FIXTURE_WORLD_DIRS+=("$dir")
-  valid_manifest >"$dir/world-state.json"
   jq --arg addr "0x1111111111111111111111111111111111111111" \
-    '.identities[0].ethAddress = $addr' <(valid_sidecar) >"$dir/world-secrets.json"
+    '.identities[0].ethAddress = $addr' \
+    "$dir/world-secrets.json" >"$dir/world-secrets.json.tmp"
+  mv "$dir/world-secrets.json.tmp" "$dir/world-secrets.json"
   chmod 600 "$dir/world-secrets.json"
 
   if output="$(WORLD="$world" "$CHECK_SCRIPT" 2>&1)"; then
@@ -397,6 +502,8 @@ main() {
   case_multiple_violations
   case_valid_sidecar_schema
   case_nonexistent_schema
+  case_unsupported_keyword_optional_property
+  case_pattern_anchor_rejects_trailing_newline
   case_sidecar_mode_function
   case_cross_document_valid_passes
   case_cross_document_identity_count

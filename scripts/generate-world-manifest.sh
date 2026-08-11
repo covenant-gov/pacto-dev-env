@@ -27,7 +27,19 @@ err() { echo -e "${RED}[generate-world-manifest]${NC} $*" >&2; }
 warn() { echo -e "${YELLOW}[generate-world-manifest]${NC} $*" >&2; }
 ok() { echo -e "${GREEN}[generate-world-manifest]${NC} $*"; }
 
+# Prefer an already-exported WORLD over a value from .env.
+_WORLD_FROM_ENV="${WORLD-}"
+if [ -f "$REPO_ROOT/.env" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  . "$REPO_ROOT/.env"
+  set +a
+fi
+if [ -n "${_WORLD_FROM_ENV}" ]; then
+  WORLD="$_WORLD_FROM_ENV"
+fi
 WORLD="${WORLD:-default}"
+unset _WORLD_FROM_ENV
 WORLD_FILE="$REPO_ROOT/worlds/$WORLD.world.json"
 
 if [ ! -f "$WORLD_FILE" ]; then
@@ -163,6 +175,7 @@ manifest_path.chmod(0o644)
 # Open with restrictive mode from creation so the secret material is never
 # briefly world-readable between write and chmod.
 fd = os.open(str(sidecar_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+os.fchmod(fd, 0o600)
 with os.fdopen(fd, "w") as f:
     f.write(json.dumps(sidecar, indent=2) + "\n")
 os.chmod(str(sidecar_path), 0o600)
@@ -174,6 +187,21 @@ print(f"Sidecar: {sidecar_path}")
 PYEOF
 )"; then
   err "$(cat "$ERR_FILE")"
+  exit 1
+fi
+
+MANIFEST_PATH="$REPO_ROOT/data/world/$WORLD/world-state.json"
+SIDECAR_PATH="$REPO_ROOT/data/world/$WORLD/world-secrets.json"
+
+if ! MANIFEST_SCHEMA_ERR="$(python3 "$SCRIPT_DIR/validate-json-schema.py" "$REPO_ROOT/schemas/world-state.schema.json" "$MANIFEST_PATH" 2>&1)"; then
+  err "generated manifest failed schema validation:"
+  err "$MANIFEST_SCHEMA_ERR"
+  exit 1
+fi
+
+if ! SIDECAR_SCHEMA_ERR="$(python3 "$SCRIPT_DIR/validate-json-schema.py" "$REPO_ROOT/schemas/secrets-sidecar.schema.json" "$SIDECAR_PATH" 2>&1)"; then
+  err "generated sidecar failed schema validation:"
+  err "$SIDECAR_SCHEMA_ERR"
   exit 1
 fi
 

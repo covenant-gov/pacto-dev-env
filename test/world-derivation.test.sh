@@ -40,7 +40,13 @@ trap cleanup EXIT
 
 # Portable octal file mode: BSD stat (macOS) first, then GNU stat (Linux).
 file_mode() {
-  stat -f "%OLp" "$1" 2>/dev/null || stat -c "%a" "$1" 2>/dev/null
+  local mode
+  if ! mode="$(stat -f '%OLp' "$1" 2>/dev/null)"; then
+    if ! mode="$(stat -c '%a' "$1" 2>/dev/null)"; then
+      return 1
+    fi
+  fi
+  printf '%s' "$mode"
 }
 
 ROOT_SEED="test-root-seed-for-world-derivation"
@@ -147,9 +153,10 @@ PYEOF
 }
 
 check_known_answer() {
-  echo "Checking secp256k1 known-answer vector (secret 0x01 -> G.x)..."
-  local result expected
-  expected="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+  echo "Checking secp256k1 known-answer vectors and curve equation..."
+  local result k1_expected k2_expected
+  k1_expected="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+  k2_expected="c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
   result=$(python3 - "$DERIVE" <<'PYEOF'
 import importlib.util, sys
 
@@ -157,14 +164,27 @@ spec = importlib.util.spec_from_file_location("derive_identity", sys.argv[1])
 di = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(di)
 
-secret = (1).to_bytes(32, "big")
-print(di.x_only_pubkey(secret).hex())
+on_curve = (di.GY * di.GY - di.GX ** 3 - 7) % di.P == 0
+print("curve_ok", on_curve)
+
+print("k1", di.x_only_pubkey((1).to_bytes(32, "big")).hex())
+print("k2", di.x_only_pubkey((2).to_bytes(32, "big")).hex())
 PYEOF
 )
-  if [ "$result" = "$expected" ]; then
+  if echo "$result" | grep -q "^curve_ok True$"; then
+    pass "generator point satisfies y^2 = x^3 + 7 (mod p)"
+  else
+    fail "generator point does not satisfy the curve equation (got: $result)"
+  fi
+  if echo "$result" | grep -q "^k1 $k1_expected$"; then
     pass "secret key 0x01 yields the generator point's X coordinate"
   else
-    fail "secret key 0x01 yielded $result, expected $expected"
+    fail "secret key 0x01 did not yield the expected X coordinate (got: $result)"
+  fi
+  if echo "$result" | grep -q "^k2 $k2_expected$"; then
+    pass "secret key 0x02 yields the doubled point's (2G) X coordinate"
+  else
+    fail "secret key 0x02 did not yield the expected X coordinate (got: $result)"
   fi
 }
 

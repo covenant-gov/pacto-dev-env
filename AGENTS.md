@@ -9,7 +9,7 @@
 This repository is a **service orchestration layer**, not an application.
 
 - **Default stack** starts three services:
-  - `nostr-relay` on `ws://localhost:7000`
+  - `nostr-relay` — Caddy-fronted TLS endpoint at `wss://localhost:7001` (used by sandboxed clients, e.g. `pacto-app`); the daemon itself also listens on plaintext `ws://localhost:7002` for host-side CLI tooling (`nak`, `websocat`, `pacto-bot-admin`). `7001` is the default/canonical endpoint, not `7000`.
   - `anvil` EVM testnet on `http://localhost:8545` (chain 31337)
   - `pacto-bot-api` daemon on a Unix socket inside the `pacto-bot-api-data` volume
 - **Optional Compose profiles** extend the stack:
@@ -27,7 +27,10 @@ This repository is a **service orchestration layer**, not an application.
 | Directory | Purpose |
 |---|---|
 | `docker/` | Local Dockerfiles for `anvil` (built locally) and `debug`; prebuilt GHCR images are used for `nostr-relay`, `aztec-sandbox`, and `nip46-bunker`. |
-| `data/` | Runtime data volumes mounted into containers (`data/relay`, `data/aztec`, `data/nip46-bunker-db`). |
+| `data/` | Runtime data volumes mounted into containers (`data/relay`, `data/aztec`, `data/nip46-bunker-db`, `data/world/<world>/`). `data/world/<world>/world-secrets.json` holds derived signing material, is gitignored, and must never be committed. |
+| `worlds/` | World definitions (`<world>.world.json`) consumed by manifest generation and identity derivation. |
+| `schemas/` | JSON Schemas (`world-state.schema.json`, `secrets-sidecar.schema.json`) used to validate generated world artifacts. |
+| `test/` | Shell test suite (`world-derivation.test.sh`, `world-schema.test.sh`), run via `make test-world`. |
 
 ## Development Commands
 
@@ -53,6 +56,8 @@ mkcert -install
 
 This lets Pacto use the Caddy TLS endpoints (`https://localhost:8546`, `wss://localhost:7001`, etc.) without certificate warnings. If you skip it, Caddy falls back to its internal self-signed CA and clients must skip verification.
 
+Trusting the local CA on the host is necessary but not sufficient for `pacto-app`: a debug build of `pacto-app` must also be compiled with the `local-relay-tls` feature/flag before it will validate `wss://localhost:7001`. If `pacto-app` reports an `UnknownIssuer` TLS error even after `mkcert -install`, see `docs/troubleshooting.md`.
+
 ### Start local services
 
 Generate `pacto-bot-api.toml` from the example (the real file must be kept secret and is ignored by Git), then start the stack:
@@ -61,7 +66,7 @@ Generate `pacto-bot-api.toml` from the example (the real file must be kept secre
 cp pacto-bot-api.toml.example pacto-bot-api.toml
 chmod 600 pacto-bot-api.toml
 # Add bot identities with `pacto-bot-admin`, e.g.:
-# pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7000 --relays wss://jskitty.cat/nostr >> pacto-bot-api.toml
+# pacto-bot-admin new bosun --backend nsec --relays ws://localhost:7002 --relays wss://jskitty.cat/nostr >> pacto-bot-api.toml
 
 make up          # default stack: relay + anvil + pacto-bot-api
 make up-all      # default stack + aztec + bunker + seed
@@ -222,7 +227,7 @@ When investigating service connectivity or protocol issues, prefer these tools:
 
 ## Testing & QA
 
-- There is no automated test suite in this repository.
+- `make test-world` runs `test/world-derivation.test.sh` and `test/world-schema.test.sh`, covering world state manifest generation, identity derivation, and JSON schema validation. These tests require no Docker containers and no network access.
 - Setup script health is checked by `verify_install()` at the end of each script, which prints versions of Docker, Docker Compose, Rust, Node, pnpm, Foundry, and Aztec.
 - Service health is verified through Docker Compose healthchecks and the port reference in `README.md`.
 - When modifying a Dockerfile or setup script, test the affected path end-to-end on the target platform before considering it done.
