@@ -8,7 +8,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group build-pacto-bot-api publish-key-package check-group pacto-connect tailscale-serve-up tailscale-serve-down tailscale-serve-status world-manifest check-world-manifest test-world
+.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group invite-squad build-pacto-bot-api publish-key-package check-group pacto-connect tailscale-serve-up tailscale-serve-down tailscale-serve-status world-manifest check-world-manifest test-world
 
 pacto-connect: ## Print Pacto connection instructions using wss/https endpoints
 	@./scripts/pacto-connect.sh
@@ -119,6 +119,9 @@ check-group: ## Report MLS group artifact(s) and daemon DB state
 
 create-mls-group: ## Create an MLS group and invite a bot (requires BOT_ID, GROUP_NAME, RECIPIENT_NPUB)
 	@./scripts/create-mls-group.sh
+
+invite-squad: ## Create a squad and invite an identity with the MLS welcome plus the squad_invite DM (requires RECIPIENT_NPUB)
+	@./scripts/invite-squad.sh
 
 verify-squad: ## Gather on-chain debug info for the seeded squad (registry, Safe, governance, members)
 	@./scripts/verify-squad.sh
