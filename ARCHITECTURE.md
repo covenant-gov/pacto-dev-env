@@ -303,8 +303,8 @@ The `pacto-bot-api` daemon stores its database and Unix socket in a Docker named
 `worlds/<name>.world.json` (committed, public) describes one dev world: a
 `recipe` id, a `devRootSeed`, a `world` block (name, relay endpoint, chain
 endpoint/chainId, deployment artifact paths), and a `cast` of personas
-(`name`, `role`, `botId`, `squadRole`). `make world-manifest` derives that
-cast into two generated, gitignored files:
+(`name`, `role`, `owner`, `botId`, `squadRole`). `make world-manifest`
+derives that cast into two generated, gitignored files:
 
 - `data/world/<name>/world-state.json` — the manifest. No secret material.
   Validated against `schemas/world-state.schema.json`.
@@ -328,6 +328,27 @@ existing `nostr-k-derivs` scheme documented in `scripts/derive-eth-address.py`.
 The Nostr key is bech32-encoded to `nsec`/`npub`; the Ethereum address is
 derived from the same bytes via `cast wallet address`. Same recipe plus same
 label always yields the same identity, on any machine.
+
+### Persona ownership
+
+Every persona in the cast declares an `owner`: `bot` means pacto-bot-api owns
+the identity and replies as it (`botId` names the `pacto-bot-api.toml`
+identity); `app` means a pacto-app dev sandbox logs in as it, and no bot
+process may ever run with the same nsec. This is explicit data, not inferred
+from `botId` presence, because an app sandbox authenticating as an identity a
+live bot also holds is an MLS-state-corruption hazard (two clients racing one
+nsec's MLS ratchet), not merely untidy. `scripts/dev-world.sh`'s `app-launch`
+gate refuses `PACTO_DEV_WORLD_PERSONA` naming anything but an app-owned
+persona, listing the persona, its owner, and the app-owned personas
+available. `scripts/check-world-manifest.sh` separately enforces that `botId`
+is present if and only if `owner` is `bot` -- a check that lives outside the
+schema because the interpreter in `scripts/validate-json-schema.py` has no
+conditional (`if`/`then`) keywords to express that pairing in-schema.
+
+The default cast (`worlds/default.world.json`) is `bosun`/`captain`
+(bot-owned) and `candidate`/`recruit` (app-owned) -- two independent
+app-owned identities so two pacto-app sandboxes can run concurrently without
+sharing an nsec with each other or with a bot.
 
 ### Dev keys are public by construction
 
@@ -377,7 +398,7 @@ with `[gate:<name>] FAILED:` plus what was observed instead.
 | `docker` | Docker is installed and answering |
 | `stack-ready` | `verify-stack.sh`'s checks pass, distinguishing a down stack from a silent bot daemon |
 | `seed` | Governance contracts are deployed and live on the chain |
-| `app-launch` | The sandbox app is up and authenticated |
+| `app-launch` | The sandbox app is up and authenticated as `PACTO_DEV_WORLD_PERSONA` (default `candidate`), which must name an app-owned persona -- a bot-owned selection is refused here, naming the persona, its owner, and the app-owned personas available |
 | `keypackage-resolvable` | The bot can *resolve* the sandbox's keypackage, not merely see it on a relay |
 | `squad-invited` | The bot created the squad and published the `squad_invite` DM |
 | `welcome-accepted` | The invite was accepted and the group is joined |
@@ -395,7 +416,11 @@ passes, which is how the gates are exercised without booting an app.
 
 Concurrency isolation is inherited, not reinvented: pacto-app's
 `scripts/dev-ports.mjs` hashes the branch slug into a sandbox root and port
-set, so two worktrees each land in their own squad and neither sees the other.
+set, so two worktrees each land in their own squad and neither sees the
+other. Two sandboxes on the *same* branch stay isolated the same way a second
+worktree does: pick a second app-owned `PACTO_DEV_WORLD_PERSONA` (see
+[Persona ownership](#persona-ownership)), which lands in its own sandbox root
+and its own nsec.
 
 ### Sandbox reclaim
 

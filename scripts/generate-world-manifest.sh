@@ -115,24 +115,37 @@ for i, entry in enumerate(cast):
     ctx = f"cast[{i}]"
     persona_name = require(entry, "name", ctx)
     role = require(entry, "role", ctx)
-    bot_id = require(entry, "botId", ctx)
+    owner = require(entry, "owner", ctx)
     squad_role = require(entry, "squadRole", ctx)
+    bot_id = entry.get("botId") if isinstance(entry, dict) else None
+
+    if owner not in ("bot", "app"):
+        die(f"{ctx} ('{persona_name}') has owner '{owner}', expected 'bot' or 'app'")
+    if owner == "bot" and not bot_id:
+        die(f"{ctx} ('{persona_name}') has owner 'bot' but no botId")
+    if owner == "app" and bot_id:
+        die(f"{ctx} ('{persona_name}') has owner 'app' but also declares botId '{bot_id}'; "
+            "app-owned personas must not carry a bot identity")
 
     try:
         identity = derive_identity.derive(root_seed, recipe, persona_name)
     except Exception as exc:
         die(f"failed to derive identity for '{persona_name}': {exc}")
 
-    personas.append({
+    persona = {
         "name": persona_name,
         "role": role,
         "npub": identity["npub"],
         "ethAddress": identity["ethAddress"],
-        "botId": bot_id,
-        "squadRole": squad_role,
-        "derivation": {"recipe": recipe, "label": persona_name},
-        "sandboxOnly": True,
-    })
+        "owner": owner,
+    }
+    if bot_id:
+        persona["botId"] = bot_id
+    persona["squadRole"] = squad_role
+    persona["derivation"] = {"recipe": recipe, "label": persona_name}
+    persona["sandboxOnly"] = True
+    personas.append(persona)
+
     identities.append({
         "name": persona_name,
         "mnemonic": identity["mnemonic"],
@@ -140,6 +153,7 @@ for i, entry in enumerate(cast):
         "nsec": identity["nsec"],
         "ethAddress": identity["ethAddress"],
         "ethPrivateKey": identity["ethPrivateKey"],
+        "owner": owner,
         "sandboxOnly": True,
     })
 

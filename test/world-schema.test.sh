@@ -63,6 +63,7 @@ valid_manifest() {
       "role": "steward",
       "npub": "npub1${NPUB_TAIL}",
       "ethAddress": "0x${ETH40}",
+      "owner": "bot",
       "botId": "bosun",
       "squadRole": "admin",
       "derivation": { "recipe": "pacto-dev-world/v1", "label": "bosun" },
@@ -86,6 +87,7 @@ valid_sidecar() {
       "nsec": "nsec1${NPUB_TAIL}",
       "ethAddress": "0x${ETH40}",
       "ethPrivateKey": "0x${HEX64}",
+      "owner": "bot",
       "sandboxOnly": true
     }
   ]
@@ -218,6 +220,28 @@ case_enum_squad_role() {
   fi
 }
 
+case_owner_missing() {
+  local f="$TMPDIR/owner-missing.json"
+  valid_manifest | jq 'del(.personas[0].owner)' >"$f"
+  run_validate "$WS_SCHEMA" "$f"
+  if [[ "$LAST_STATUS" -eq 1 ]] && grep -q 'owner' <<<"$LAST_OUTPUT"; then
+    pass "persona missing owner fails validation"
+  else
+    fail "expected missing-owner rejection: exit $LAST_STATUS, output: $LAST_OUTPUT"
+  fi
+}
+
+case_owner_enum_invalid() {
+  local f="$TMPDIR/owner-invalid.json"
+  valid_manifest | jq '.personas[0].owner = "human"' >"$f"
+  run_validate "$WS_SCHEMA" "$f"
+  if [[ "$LAST_STATUS" -eq 1 ]] && grep -q 'owner' <<<"$LAST_OUTPUT"; then
+    pass "invalid owner enum value fails"
+  else
+    fail "expected owner enum rejection: exit $LAST_STATUS, output: $LAST_OUTPUT"
+  fi
+}
+
 case_empty_personas() {
   local f="$TMPDIR/empty-personas.json"
   valid_manifest | jq '.personas = []' >"$f"
@@ -283,6 +307,28 @@ case_sidecar_malformed_mnemonic() {
     pass "sidecar mnemonic with the wrong word count fails the 12-word pattern"
   else
     fail "expected malformed-mnemonic rejection: exit $LAST_STATUS, output: $LAST_OUTPUT"
+  fi
+}
+
+case_sidecar_owner_missing() {
+  local f="$TMPDIR/sidecar-owner-missing.json"
+  valid_sidecar | jq 'del(.identities[0].owner)' >"$f"
+  run_validate "$SS_SCHEMA" "$f"
+  if [[ "$LAST_STATUS" -eq 1 ]] && grep -q 'owner' <<<"$LAST_OUTPUT"; then
+    pass "sidecar identity missing owner fails validation"
+  else
+    fail "expected missing-owner rejection: exit $LAST_STATUS, output: $LAST_OUTPUT"
+  fi
+}
+
+case_sidecar_owner_enum_invalid() {
+  local f="$TMPDIR/sidecar-owner-invalid.json"
+  valid_sidecar | jq '.identities[0].owner = "human"' >"$f"
+  run_validate "$SS_SCHEMA" "$f"
+  if [[ "$LAST_STATUS" -eq 1 ]] && grep -q 'owner' <<<"$LAST_OUTPUT"; then
+    pass "invalid sidecar owner enum value fails"
+  else
+    fail "expected owner enum rejection: exit $LAST_STATUS, output: $LAST_OUTPUT"
   fi
 }
 
@@ -396,6 +442,7 @@ make_fixture_world() {
     {
       "name": "bosun",
       "role": "steward",
+      "owner": "bot",
       "botId": "bosun",
       "squadRole": "admin"
     }
@@ -416,6 +463,7 @@ JSON
       role: "steward",
       npub: $id.npub,
       ethAddress: $id.ethAddress,
+      owner: "bot",
       botId: "bosun",
       squadRole: "admin",
       derivation: { recipe: "pacto-dev-world/v1", label: "bosun" },
@@ -433,6 +481,7 @@ JSON
       nsec: $id.nsec,
       ethAddress: $id.ethAddress,
       ethPrivateKey: $id.ethPrivateKey,
+      owner: "bot",
       sandboxOnly: true
     }]
   }' >"$dir/world-secrets.json"
@@ -508,6 +557,57 @@ case_cross_document_value_mismatch() {
   fi
 }
 
+case_cross_document_owner_missing_botid() {
+  local world dir status output
+  make_fixture_world owner-missing-botid
+  world="$LAST_FIXTURE_WORLD"
+  dir="$REPO_ROOT/data/world/$world"
+  # owner stays "bot" but botId is stripped -- a bot-owned persona with no
+  # daemon identity to answer for it.
+  jq 'del(.personas[0].botId)' "$dir/world-state.json" >"$dir/world-state.json.tmp"
+  mv "$dir/world-state.json.tmp" "$dir/world-state.json"
+
+  if output="$(WORLD="$world" "$CHECK_SCRIPT" 2>&1)"; then
+    status=0
+  else
+    status=$?
+  fi
+
+  if [[ "$status" -ne 0 ]] && grep -qi 'botid' <<<"$output" && grep -q 'bosun' <<<"$output"; then
+    pass "bot-owned persona missing botId is rejected and named"
+  else
+    fail "expected bot-owned persona missing botId to be rejected: exit $status, output: $output"
+  fi
+}
+
+case_cross_document_app_owner_with_botid() {
+  local world dir status output
+  make_fixture_world app-owner-with-botid
+  world="$LAST_FIXTURE_WORLD"
+  dir="$REPO_ROOT/data/world/$world"
+  # Relabel as app-owned while still carrying botId -- exactly the
+  # mislabelled-persona shape U11a exists to reject. Both documents are
+  # updated so this isolates the owner/botId pairing check from the
+  # separate manifest<->sidecar owner-agreement check.
+  jq '.personas[0].owner = "app"' "$dir/world-state.json" >"$dir/world-state.json.tmp"
+  mv "$dir/world-state.json.tmp" "$dir/world-state.json"
+  jq '.identities[0].owner = "app"' "$dir/world-secrets.json" >"$dir/world-secrets.json.tmp"
+  mv "$dir/world-secrets.json.tmp" "$dir/world-secrets.json"
+  chmod 600 "$dir/world-secrets.json"
+
+  if output="$(WORLD="$world" "$CHECK_SCRIPT" 2>&1)"; then
+    status=0
+  else
+    status=$?
+  fi
+
+  if [[ "$status" -ne 0 ]] && grep -qi 'botid' <<<"$output" && grep -q 'bosun' <<<"$output"; then
+    pass "app-owned persona carrying a botId is rejected and named"
+  else
+    fail "expected app-owned persona with botId to be rejected: exit $status, output: $output"
+  fi
+}
+
 main() {
   echo "World manifest + secrets sidecar schema test suite"
   echo "===================================================="
@@ -522,12 +622,16 @@ main() {
   case_malformed_eth_address
   case_enum_role
   case_enum_squad_role
+  case_owner_missing
+  case_owner_enum_invalid
   case_empty_personas
   case_boolean_for_integer
   case_multiple_violations
   case_valid_sidecar_schema
   case_sidecar_missing_mnemonic
   case_sidecar_malformed_mnemonic
+  case_sidecar_owner_missing
+  case_sidecar_owner_enum_invalid
   case_nonexistent_schema
   case_unsupported_keyword_optional_property
   case_pattern_anchor_rejects_trailing_newline
@@ -535,6 +639,8 @@ main() {
   case_cross_document_valid_passes
   case_cross_document_identity_count
   case_cross_document_value_mismatch
+  case_cross_document_owner_missing_botid
+  case_cross_document_app_owner_with_botid
 
   echo
   if [[ "$failed" -eq 0 ]]; then

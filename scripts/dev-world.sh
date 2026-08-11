@@ -22,8 +22,15 @@ set -euo pipefail
 #   PACTO_APP_DIR                - path to the pacto-app worktree that this
 #                                   sandbox belongs to (default: ../pacto-app,
 #                                   mirroring PACTO_GOV_DIR).
-#   PACTO_DEV_WORLD_PERSONA      - manifest persona to log the sandbox in as
-#                                   (default: candidate).
+#   PACTO_DEV_WORLD_PERSONA      - app-owned manifest persona to log the
+#                                   sandbox in as (default: candidate). Must
+#                                   name a persona whose manifest "owner" is
+#                                   "app"; a bot-owned persona (owner "bot",
+#                                   e.g. bosun/captain) is refused at the
+#                                   app-launch gate, naming the persona, its
+#                                   owner, and the app-owned personas
+#                                   available, so an app sandbox can never
+#                                   share an nsec with a live bot identity.
 #   BOT_ID                       - admin bot that owns the squad (default:
 #                                   bosun), same variable invite-squad.sh reads.
 #   PACTO_DEV_WORLD_STOP_AFTER   - gate name to stop after (for testing
@@ -153,6 +160,21 @@ resolve_world_identity() {
 
   if [ ! -f "$manifest" ] || [ ! -f "$sidecar" ]; then
     gate_fail app-launch "world manifest not found for WORLD=$WORLD (expected $manifest and $sidecar); run 'make world-manifest' first"
+  fi
+
+  local persona_owner
+  persona_owner="$(jq -r --arg n "$SANDBOX_PERSONA" '.personas[] | select(.name == $n) | .owner // empty' "$manifest")"
+
+  if [ -z "$persona_owner" ]; then
+    local all_personas
+    all_personas="$(jq -r '[.personas[].name] | join(", ")' "$manifest")"
+    gate_fail app-launch "persona '$SANDBOX_PERSONA' not found in the world manifest for WORLD=$WORLD; available personas: ${all_personas:-none} (run 'make world-manifest' first if the list is empty)"
+  fi
+
+  if [ "$persona_owner" != "app" ]; then
+    local app_personas
+    app_personas="$(jq -r '[.personas[] | select(.owner == "app") | .name] | join(", ")' "$manifest")"
+    gate_fail app-launch "persona '$SANDBOX_PERSONA' has owner '$persona_owner', not 'app'; a pacto-app sandbox may only log in as an app-owned persona, or it would share an nsec with a live pacto-bot-api identity (an MLS-state-corruption hazard). App-owned personas available: ${app_personas:-none}"
   fi
 
   IDENTITY_NPUB="$(jq -r --arg n "$SANDBOX_PERSONA" '.personas[] | select(.name == $n) | .npub // empty' "$manifest")"
@@ -598,4 +620,6 @@ main() {
   print_summary
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
