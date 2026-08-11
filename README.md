@@ -209,17 +209,22 @@ service name. For the exact connection contract, see
 ## Common commands
 
 ```bash
-make help          # list all targets
-make up            # start the default stack
-make up-all        # start the full stack
-make seed          # deploy Pacto governance contracts
-make seed-squad    # deploy a Nave Pirata squad
-make reseed        # reset, restart, and re-seed contracts
-make reseed-all    # reset, restart, seed, and deploy a squad
-make check         # verify the stack is healthy
-make pacto-connect # print Pacto connection URLs (wss/https)
-make reset         # stop everything and clear state
+make help                 # list all targets
+make up                   # start the default stack
+make up-all                # start the full stack
+make seed                  # deploy Pacto governance contracts
+make seed-squad            # deploy a Nave Pirata squad
+make reseed                # reset, restart, and re-seed contracts
+make reseed-all            # reset, restart, seed, and deploy a squad
+make check                 # verify the stack is healthy
+make pacto-connect         # print Pacto connection URLs (wss/https)
+make world-manifest        # derive the dev-world cast and write the manifest + secret sidecar (WORLD=default)
+make check-world-manifest  # validate a generated world manifest and sidecar against schemas/ (WORLD=default)
+make test-world            # run the world manifest and identity derivation test suite
+make reset                 # stop everything and clear state
 ```
+
+See [`ARCHITECTURE.md#dev-world-state-manifest`](ARCHITECTURE.md#dev-world-state-manifest) for what the world manifest is and how identities are derived.
 
 ## Where to go next
 

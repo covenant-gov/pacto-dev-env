@@ -8,7 +8,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group build-pacto-bot-api publish-key-package check-group pacto-connect tailscale-serve-up tailscale-serve-down tailscale-serve-status
+.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group build-pacto-bot-api publish-key-package check-group pacto-connect tailscale-serve-up tailscale-serve-down tailscale-serve-status world-manifest check-world-manifest test-world
 
 pacto-connect: ## Print Pacto connection instructions using wss/https endpoints
 	@./scripts/pacto-connect.sh
@@ -122,3 +122,13 @@ create-mls-group: ## Create an MLS group and invite a bot (requires BOT_ID, GROU
 
 verify-squad: ## Gather on-chain debug info for the seeded squad (registry, Safe, governance, members)
 	@./scripts/verify-squad.sh
+
+world-manifest: ## Derive the dev-world cast and write the manifest + secret sidecar (WORLD=default)
+	@./scripts/generate-world-manifest.sh
+
+check-world-manifest: ## Validate a generated world manifest and sidecar against schemas/ (WORLD=default)
+	@./scripts/check-world-manifest.sh
+
+test-world: ## Run the world manifest and identity derivation test suite
+	@./test/world-derivation.test.sh
+	@./test/world-schema.test.sh

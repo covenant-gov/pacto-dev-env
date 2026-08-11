@@ -1,0 +1,21 @@
+{
+  "recipe": "pacto-dev-world/v1",
+  "devRootSeed": "pacto-dev-world/v1 public dev root — sandbox only, never a real account",
+  "world": {
+    "name": "default",
+    "relayEndpoint": "ws://localhost:7002",
+    "chain": {
+      "endpoint": "http://localhost:8545",
+      "chainId": 31337
+    },
+    "deploymentArtifacts": {
+      "governance": "data/deployments/31337/full-system.json",
+      "squad": "data/deployments/31337/squad.json"
+    }
+  },
+  "cast": [
+    { "name": "bosun", "role": "steward", "botId": "bosun", "squadRole": "admin" },
+    { "name": "captain", "role": "member", "botId": "captain", "squadRole": "crew" },
+    { "name": "candidate", "role": "candidate", "botId": "candidate", "squadRole": "candidate" }
+  ]
+}

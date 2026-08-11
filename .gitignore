@@ -6,3 +6,9 @@ data/
 # generated state.
 data/deployments/
 data/cache/
+
+# Generated dev-world state. The manifest is reproducible from worlds/*.world.json
+# and the secret sidecar is signing material; neither is ever committed. Named
+# explicitly so narrowing the data/ rule cannot expose the sidecar.
+data/world/
+**/world-secrets.json
