@@ -29,7 +29,7 @@ repository, so the keys it derives are public by construction.
 import argparse
 import hashlib
 import hmac
-import subprocess
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -37,11 +37,27 @@ from pathlib import Path
 P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 GX = 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798
-GY = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B
+GY = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
 G = (GX, GY)
+assert (GY * GY - GX ** 3 - 7) % P == 0, "secp256k1 G is off-curve"
 
-CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-GENERATOR = [0x3B6A57B2, 0x26508E6D, 0x1EA119FA, 0x3D4233DD, 0x2A1462B3]
+
+def _load_module(name: str, path: Path):
+    """Load a sibling script as a module (mirrors test/world-derivation.test.sh)."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_eth = _load_module("derive_eth_address", Path(__file__).resolve().parent / "derive-eth-address.py")
+
+# Reuse the bech32 constants/helpers from derive-eth-address.py -- one implementation, not two.
+CHARSET = _eth.CHARSET
+GENERATOR = _eth.GENERATOR
+_polymod = _eth._polymod
+_hrp_expand = _eth._hrp_expand
+_convert_bits = _eth._convert_bits
 
 
 def hkdf_sha256(ikm: bytes, salt: bytes, info: bytes, length: int) -> bytes:
@@ -105,45 +121,10 @@ def x_only_pubkey(secret: bytes) -> bytes:
     return x.to_bytes(32, "big")
 
 
-def _polymod(values):
-    chk = 1
-    for v in values:
-        b = chk >> 25
-        chk = (chk & 0x1FFFFFF) << 5 ^ v
-        for i in range(5):
-            chk ^= GENERATOR[i] if (b >> i) & 1 else 0
-    return chk
-
-
-def _hrp_expand(hrp):
-    return [ord(x) >> 5 for x in hrp] + [0] + [ord(x) & 31 for x in hrp]
-
-
 def _create_checksum(hrp, data):
     values = _hrp_expand(hrp) + data
     polymod = _polymod(values + [0, 0, 0, 0, 0, 0]) ^ 1
     return [(polymod >> 5 * (5 - i)) & 31 for i in range(6)]
-
-
-def _convert_bits(data, from_bits, to_bits, pad=True):
-    acc = 0
-    bits = 0
-    ret = []
-    maxv = (1 << to_bits) - 1
-    for value in data:
-        if value < 0 or (from_bits < 8 and value >> from_bits):
-            raise ValueError("invalid data")
-        acc = ((acc << from_bits) | value) & ((1 << (from_bits + to_bits)) - 1)
-        bits += from_bits
-        while bits >= to_bits:
-            bits -= to_bits
-            ret.append((acc >> bits) & maxv)
-    if pad:
-        if bits:
-            ret.append((acc << (to_bits - bits)) & maxv)
-    elif bits >= from_bits or ((acc << (to_bits - bits)) & maxv):
-        raise ValueError("invalid padding")
-    return ret
 
 
 def bech32_encode(hrp: str, data: bytes) -> str:
@@ -154,24 +135,9 @@ def bech32_encode(hrp: str, data: bytes) -> str:
     return hrp + "1" + "".join(CHARSET[d] for d in combined)
 
 
-def _derive_eth_address_script() -> Path:
-    return Path(__file__).resolve().parent / "derive-eth-address.py"
-
-
 def derive_eth_address(nsec: str) -> str:
-    """Shell out to derive-eth-address.py -- the one address scheme."""
-    script = _derive_eth_address_script()
-    result = subprocess.run(
-        [sys.executable, str(script), nsec],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"derive-eth-address.py failed (is 'cast' on PATH?): {result.stderr.strip()}"
-        )
-    return result.stdout.strip()
+    """Derive the Ethereum address via derive-eth-address.py -- the one address scheme."""
+    return _eth.derive_address(nsec)
 
 
 def derive(root_seed: str, recipe: str, label: str) -> dict:

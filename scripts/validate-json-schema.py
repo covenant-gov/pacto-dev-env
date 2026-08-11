@@ -115,8 +115,66 @@ def _index(path, idx):
     return f"{path}[{idx}]"
 
 
+def _walk_schema(schema, path):
+    """Recursively check every reachable schema node for unsupported
+    keywords, independent of which instance keys happen to be present.
+
+    Validator.validate only visits a properties/items/additionalProperties
+    subschema when a matching instance value shows up, so an optional
+    property whose subschema uses an unsupported keyword would otherwise
+    pass silently whenever the instance omits it. This walks the schema
+    shape itself -- properties, a dict additionalProperties, items, and
+    every $defs entry -- so refusal never depends on instance content.
+    """
+    if not isinstance(schema, dict):
+        raise SchemaError(f"schema at {path or '<root>'} is not an object")
+
+    unknown = set(schema) - SUPPORTED_KEYWORDS - IGNORABLE_ANNOTATIONS
+    if unknown:
+        raise SchemaError(
+            f"unsupported schema keyword(s) {sorted(unknown)} at "
+            f"{path or '<root>'}"
+        )
+
+    for key, subschema in schema.get("properties", {}).items():
+        _walk_schema(subschema, _child(path, key))
+
+    additional = schema.get("additionalProperties", True)
+    if isinstance(additional, dict):
+        _walk_schema(additional, _child(path, "additionalProperties"))
+
+    if "items" in schema:
+        _walk_schema(schema["items"], _child(path, "items"))
+
+    for name, subschema in schema.get("$defs", {}).items():
+        _walk_schema(subschema, _child(path, f"$defs.{name}"))
+
+
+def _anchor_pattern(pattern):
+    """Rewrite a trailing unescaped '$' to '\\Z'.
+
+    Python's re treats '$' as matching either at the absolute end of the
+    string or just before a single trailing newline, so
+    re.search('^0x[0-9a-f]{4}$', '0xdead\\n') would wrongly succeed. '\\Z'
+    only matches the absolute end, which is what a JSON Schema 'pattern'
+    anchor means. A '$' preceded by an odd number of backslashes is an
+    escaped literal dollar sign, not an anchor, and is left alone.
+    """
+    if not pattern.endswith("$"):
+        return pattern
+    backslashes = 0
+    i = len(pattern) - 2
+    while i >= 0 and pattern[i] == "\\":
+        backslashes += 1
+        i -= 1
+    if backslashes % 2 == 1:
+        return pattern
+    return pattern[:-1] + r"\Z"
+
+
 class Validator:
     def __init__(self, root_schema):
+        _walk_schema(root_schema, "")
         self.root = root_schema
         self.errors = []
 
@@ -162,7 +220,7 @@ class Validator:
             )
 
         if "pattern" in schema and isinstance(instance, str):
-            if re.search(schema["pattern"], instance) is None:
+            if re.search(_anchor_pattern(schema["pattern"]), instance) is None:
                 self.errors.append(
                     (path, f"does not match pattern {schema['pattern']!r}: {instance!r}")
                 )
