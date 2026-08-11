@@ -64,7 +64,7 @@ So the accept call always returns `Welcome not found`. `mls_groups` stays empty,
 
 Three artifacts cost time and are worth avoiding when reproducing this.
 
-**Use a stable sandbox root.** `make dev-sandbox` mints a new timestamped root on every invocation, so restarting discards the MLS key store along with the keypackage private key. A welcome issued against the previous run's keypackage then fails with `No matching key package was found in the key store` — which looks like a delivery bug and is not one. Set `PACTO_TEST_SANDBOX_ROOT` explicitly instead.
+**Use a stable sandbox root.** *(Fixed upstream — kept here because the symptom is misleading.)* `make dev-sandbox` used to mint a new timestamped root on every invocation, so restarting discarded the MLS key store along with the keypackage private key. A welcome issued against the previous run's keypackage then fails with `No matching key package was found in the key store` — which looks like a delivery bug and is not one. The root is now `test_sandbox/<branch-slug>/<persona>` and stable across runs; `PERSONA=<name>` gives a second identity on the same branch for two-client checks. If you see that error again, something is still handing the app a per-run `PACTO_TEST_SANDBOX_ROOT`.
 
 **Relay routing.** The app's gift-wrap subscription runs on the global client pool, which holds the default public relay list and *not* the overridden trusted relay. The probe's welcome was visible only because `bosun` publishes to `wss://jskitty.cat/nostr` as well as the local relay. Until `pacto-app-384.67` lands, a sandbox pointed at the local stack will not see a welcome published solely to that stack — and the sandbox handle will still report only the local endpoint, understating the app's real exposure.
 
