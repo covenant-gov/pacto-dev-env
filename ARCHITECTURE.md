@@ -65,14 +65,36 @@ A `caddy` sidecar is part of the default stack and exposes four TLS endpoints on
 
 `make up` and `make up-all` run `scripts/generate-local-certs.sh` automatically. If `mkcert` is installed (the setup scripts install it), Caddy uses a locally-trusted certificate. If `mkcert` is not available, Caddy falls back to its internal self-signed CA; clients must then skip certificate verification. To trust the mkcert CA in browsers, run `mkcert -install` once after the certificates are generated.
 
+#### Use `ws://localhost:7002` from pacto-app, not `wss://localhost:7001`
+
+The relay is also published in plaintext on `127.0.0.1:7002`. That is the
+endpoint dev sandboxes should point `PACTO_TRUSTED_RELAYS` at, for two
+reasons that no host-side trust step can fix:
+
+- **pacto-app cannot validate a local certificate at all.** Its relay
+  websocket resolves through `nostr-sdk` -> `async-wsocket` ->
+  `tokio-tungstenite` -> `webpki-roots`, which bundles the Mozilla root set
+  and never consults the OS trust store (`rustls-native-certs` is not in that
+  dependency graph). A locally-issued certificate fails with
+  `invalid peer certificate: UnknownIssuer` even when `openssl` and `curl`
+  verify the same endpoint successfully.
+- **Port 7000 is not dependable on macOS.** ControlCenter/AirPlay listens on
+  `*:7000`, so `localhost:7000` can reach that process instead of the relay.
+  7002 is published specifically to avoid the collision.
+
+`wss://localhost:7001` remains correct for browsers and for tools that use the
+system trust store.
+
 ### Bot event visibility in pacto-app
 
-`pacto-app` only auto-adds `ws://localhost:7000` when it is running under
+`pacto-app` only auto-adds a local relay when it is running under
 `tauri:dev` (`import.meta.env.DEV`); an installed/production build never
-connects to the local relay unless a user manually adds it. It does,
+connects to the local relay unless a user manually adds it. As of the
+runtime-resolved relay set that auto-add is `wss://localhost:7001`, which the
+app itself cannot validate — see the endpoint note above. It does,
 however, always connect to a fixed set of trusted public relays, including
-`wss://jskitty.cat/nostr` (see `TRUSTED_RELAYS`/`DEFAULT_RELAYS` in
-`pacto-app/src-tauri/src/lib.rs`). Bot identities in `pacto-bot-api.toml`
+`wss://jskitty.cat/nostr` (see `trusted_relays()` in
+`pacto-app/src-tauri/src/trusted_relays.rs`). Bot identities in `pacto-bot-api.toml`
 therefore list both relays — `ws://nostr-relay:8080` for local tooling
 (`websocat`, `nak`, MLS smoke tests) and `wss://jskitty.cat/nostr` so bot
 events and KeyPackages are visible in any pacto-app build without extra
@@ -258,10 +280,74 @@ data/
 ├── deployments/        # Pacto governance deployment artifacts (from seed)
 ├── cache/              # Foundry cache used by the seed deployer
 ├── out/                # Foundry build output used by the seed deployer
+├── world/<name>/       # Generated world-state manifest + secret sidecar (gitignored)
 └── daemon-socket/      # not used; the daemon socket lives in the named volume
 ```
 
 The `pacto-bot-api` daemon stores its database and Unix socket in a Docker named volume called `pacto-bot-api-data`. This named volume can be shared with sibling app composes as `external: true`.
+
+## Dev-world state manifest
+
+`worlds/<name>.world.json` (committed, public) describes one dev world: a
+`recipe` id, a `devRootSeed`, a `world` block (name, relay endpoint, chain
+endpoint/chainId, deployment artifact paths), and a `cast` of personas
+(`name`, `role`, `botId`, `squadRole`). `make world-manifest` derives that
+cast into two generated, gitignored files:
+
+- `data/world/<name>/world-state.json` — the manifest. No secret material.
+  Validated against `schemas/world-state.schema.json`.
+- `data/world/<name>/world-secrets.json` — the secret sidecar, written mode
+  `0o600`. Validated against `schemas/secrets-sidecar.schema.json`.
+
+This manifest is the **single identity contract shared by pacto-dev-env,
+pacto-app, and pacto-bot-api**. A breaking change to it is a three-repo
+change, which is what `manifestVersion` exists to make loud: every consumer
+declares the minimum version it accepts and the maximum it understands, and
+refuses a manifest outside that window in either direction rather than
+partially consuming it.
+
+### Derivation recipe
+
+For each cast entry, with label = the persona's `name`: HKDF-SHA256 (RFC
+5869) with IKM = the world file's `devRootSeed`, salt = the world file's
+`recipe` id, info = `persona:<label>`, and 32 bytes of output. Those 32 bytes
+are simultaneously the Nostr secret key and the Ethereum private key, per the
+existing `nostr-k-derivs` scheme documented in `scripts/derive-eth-address.py`.
+The Nostr key is bech32-encoded to `nsec`/`npub`; the Ethereum address is
+derived from the same bytes via `cast wallet address`. Same recipe plus same
+label always yields the same identity, on any machine.
+
+### Dev keys are public by construction
+
+The recipe is committed, so every identity it derives is a published key —
+nothing here relies on the derivation being secret. Every persona is stamped
+`sandboxOnly: true` in both the manifest and the sidecar, and pacto-app
+refuses to log in with a sandbox-only identity while any non-local relay is
+in its resolved relay set. That refusal is driven by the launcher exporting
+`PACTO_DEV_IDENTITY_SANDBOX_ONLY=1`; the manifest stamp is the source a
+launcher reads, and on its own it enforces nothing. Wiring the launcher to
+set it from the manifest is a later unit. Safety rests entirely on relay
+gating and treating these as throwaway squads. **Never import one of these
+identities into a real account.**
+
+### Commands
+
+```bash
+make world-manifest        # derive the cast and write manifest + sidecar (WORLD=default)
+make check-world-manifest  # validate a generated manifest + sidecar against schemas/
+make test-world            # run the world manifest and identity derivation test suite
+```
+
+Set `WORLD=<name>` to operate on `worlds/<name>.world.json` instead of the
+default. See `.env.example` for the override.
+
+### Relationship to ad-hoc bot identities
+
+Today's `pacto-bot-api.toml` identities are minted one-off with
+`pacto-bot-admin`. The world manifest is the deterministic replacement going
+forward: same recipe, same cast, same identities every time. Wiring
+`pacto-bot-api.toml` generation from the manifest is a later unit and is
+**not** done here.
 
 ## Security model
 
@@ -270,6 +356,9 @@ The `pacto-bot-api` daemon stores its database and Unix socket in a Docker named
 - **Daemon config must be owner-readable.** `pacto-bot-api.toml` should be mode `0o600`.
 - **Anvil uses the default test private key.** This is fine for local development only.
 - **NIP-46 bunker defaults are insecure.** The `.env.example` placeholders must be replaced before use.
+- **The secret sidecar is never committed.** `data/world/<name>/world-secrets.json` is written mode `0o600` and gitignored, same as `pacto-bot-api.toml`.
+- **The world manifest itself carries no secret material.** `world-state.json` holds only public identity fields (`npub`, `ethAddress`, ...); private keys live only in the sidecar.
+- **Dev-world identities are public by construction and sandbox-only.** The derivation recipe is committed, so every derived key is inherently public; safety comes from relay gating and the `sandboxOnly` stamp, not key secrecy.
 
 ## Image release workflow
 

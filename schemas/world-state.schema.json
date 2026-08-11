@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/covenant-gov/pacto-dev-env/schemas/world-state.schema.json",
+  "title": "Pacto dev-world state manifest",
+  "description": "The only identity contract shared by pacto-dev-env, pacto-app, and pacto-bot-api. Describes one dev world: its cast, its relay and chain endpoints, and the deployment artifacts that back it. Contains no secret material; materialized secrets live in the gitignored sidecar described by secrets-sidecar.schema.json. A breaking change here is a three-repo change, which is what manifestVersion exists to make loud.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifestVersion", "recipe", "world", "personas"],
+  "properties": {
+    "manifestVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Integer contract version. Every consumer declares the minimum version it accepts and the maximum it understands; a manifest outside that window is refused in either direction rather than partially consumed."
+    },
+    "recipe": { "$ref": "#/$defs/recipe" },
+    "world": { "$ref": "#/$defs/world" },
+    "personas": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/persona" },
+      "description": "The cast. Every entry is derived from the committed recipe and is sandbox-only by construction."
+    }
+  },
+  "$defs": {
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "public"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*/v[0-9]+$",
+          "description": "Identifier of the committed derivation recipe, e.g. pacto-dev-world/v1. Changing the recipe id changes the whole cast."
+        },
+        "public": {
+          "const": true,
+          "description": "Always true. The recipe travels with the repository, so every key it derives is public by construction (KD9). This field exists so a consumer cannot read a manifest without being told that."
+        }
+      }
+    },
+    "world": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "relayEndpoint", "chain"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable world label, used in squad names and log lines."
+        },
+        "relayEndpoint": {
+          "type": "string",
+          "pattern": "^wss?://",
+          "description": "The single Nostr relay this world routes through. pacto-app receives this as PACTO_TRUSTED_RELAYS."
+        },
+        "chain": { "$ref": "#/$defs/chain" },
+        "deploymentArtifacts": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 },
+          "description": "Repo-relative paths to deployment artifacts backing this world, keyed by artifact name (governance, squad, ...). Consumed by the local-chain address import."
+        }
+      }
+    },
+    "chain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpoint", "chainId"],
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "pattern": "^https?://",
+          "description": "JSON-RPC endpoint of the chain backing this world."
+        },
+        "chainId": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Chain id the artifacts were deployed against. A mismatch against the running chain is a loud refusal, not a fallback."
+        }
+      }
+    },
+    "persona": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "role",
+        "npub",
+        "ethAddress",
+        "botId",
+        "squadRole",
+        "derivation",
+        "sandboxOnly"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "Stable persona name. Also the derivation label, so renaming a persona re-derives its identity."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["steward", "member", "candidate", "observer"],
+          "description": "What this persona is for in the world, independent of its on-chain squad role."
+        },
+        "npub": {
+          "type": "string",
+          "pattern": "^npub1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$",
+          "description": "Bech32 Nostr public key derived from the recipe."
+        },
+        "ethAddress": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$",
+          "description": "Ethereum address derived from the same key material, matching the nostr-k-derivs scheme."
+        },
+        "botId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "Identity id in pacto-bot-api.toml. Bots act as this persona."
+        },
+        "squadRole": {
+          "type": "string",
+          "enum": ["admin", "crew", "candidate", "none"],
+          "description": "Role this persona holds in the world's squad."
+        },
+        "derivation": { "$ref": "#/$defs/derivation" },
+        "sandboxOnly": {
+          "const": true,
+          "description": "Always true. Marks the identity unusable outside a locally-routed sandbox; pacto-app refuses to log in with a sandbox-only identity while any non-local relay is resolved (R25). An identity without this mark fails validation, so the refusal cannot be dodged by omission."
+        }
+      }
+    },
+    "derivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recipe", "label"],
+      "properties": {
+        "recipe": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*/v[0-9]+$",
+          "description": "Recipe id this identity came from. Must match the manifest-level recipe id."
+        },
+        "label": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "Per-persona label fed to the derivation. Same recipe plus same label always yields the same identity."
+        }
+      }
+    }
+  }
+}
