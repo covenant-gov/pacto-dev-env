@@ -136,26 +136,57 @@ check_cross_document() {
     ok=0
   fi
 
-  # Names/order are already verified equal above; compare npub/ethAddress
+  # Names/order are already verified equal above; compare npub/ethAddress/owner
   # pairwise by index rather than collapsing into a name-keyed object,
   # which would silently drop entries when names collide (now rejected above).
   local mismatches
   mismatches="$(jq -r -s '
     (.[0].personas | map(.name)) as $names
-    | (.[0].personas | map({npub, ethAddress})) as $m
-    | (.[1].identities | map({npub, ethAddress})) as $s
+    | (.[0].personas | map({npub, ethAddress, owner})) as $m
+    | (.[1].identities | map({npub, ethAddress, owner})) as $s
     | [ range(0; $m | length)
         | select($s[.] == null or $m[.] != $s[.])
         | $names[.]
       ] | join(", ")
   ' "$manifest" "$sidecar")"
   if [[ -n "$mismatches" ]]; then
-    fail "npub/ethAddress mismatch between manifest and sidecar for persona(s): $mismatches"
+    fail "npub/ethAddress/owner mismatch between manifest and sidecar for persona(s): $mismatches"
     ok=0
   fi
 
   if [[ "$ok" -eq 1 ]]; then
     pass "cross-document invariants hold (version, recipe, unique names, identities)"
+    return 0
+  fi
+  return 1
+}
+
+# check_persona_owner_botid <manifest.json>
+# owner and botId are a pair the schema interpreter here cannot enforce
+# together (no if/then/allOf support): a bot-owned persona must carry the
+# botId naming its pacto-bot-api.toml identity, and an app-owned persona
+# must not carry one -- an app sandbox logging in as an identity a bot
+# process also claims is exactly the MLS-state-corruption hazard R14/U11
+# exists to rule out, so a mislabelled persona is refused here rather than
+# silently accepted.
+check_persona_owner_botid() {
+  local manifest="$1" ok=1
+  local bad_bot_missing bad_app_present
+
+  bad_bot_missing="$(jq -r '[.personas[] | select(.owner == "bot" and (has("botId") | not)) | .name] | join(", ")' "$manifest")"
+  if [[ -n "$bad_bot_missing" ]]; then
+    fail "bot-owned persona(s) missing botId: $bad_bot_missing"
+    ok=0
+  fi
+
+  bad_app_present="$(jq -r '[.personas[] | select(.owner == "app" and has("botId")) | .name] | join(", ")' "$manifest")"
+  if [[ -n "$bad_app_present" ]]; then
+    fail "app-owned persona(s) must not carry a botId: $bad_app_present"
+    ok=0
+  fi
+
+  if [[ "$ok" -eq 1 ]]; then
+    pass "persona owner/botId pairing is consistent (bot-owned personas carry botId, app-owned personas do not)"
     return 0
   fi
   return 1
@@ -368,6 +399,10 @@ main() {
   fi
 
   if ! check_cross_document "$manifest" "$sidecar"; then
+    exit 1
+  fi
+
+  if ! check_persona_owner_botid "$manifest"; then
     exit 1
   fi
 

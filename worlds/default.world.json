@@ -14,8 +14,9 @@
     }
   },
   "cast": [
-    { "name": "bosun", "role": "steward", "botId": "bosun", "squadRole": "admin" },
-    { "name": "captain", "role": "member", "botId": "captain", "squadRole": "crew" },
-    { "name": "candidate", "role": "candidate", "botId": "candidate", "squadRole": "candidate" }
+    { "name": "bosun", "role": "steward", "owner": "bot", "botId": "bosun", "squadRole": "admin" },
+    { "name": "captain", "role": "member", "owner": "bot", "botId": "captain", "squadRole": "crew" },
+    { "name": "candidate", "role": "candidate", "owner": "app", "squadRole": "candidate" },
+    { "name": "recruit", "role": "candidate", "owner": "app", "squadRole": "candidate" }
   ]
 }
