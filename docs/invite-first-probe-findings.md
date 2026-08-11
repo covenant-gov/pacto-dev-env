@@ -15,7 +15,7 @@ Three findings were filed against `pacto-app`:
 | Finding | Effect on dev-world |
 |---|---|
 | `pacto-app-384.68` (P0) — welcome accept looks up the gift-wrap id in a store keyed by the rumor id | Blocks the welcome-accepted gate outright |
-| `pacto-app-384.69` (P1) — the relay websocket bundles Mozilla roots, so no locally-issued cert can validate | Forces the plaintext local endpoint |
+| `pacto-app-384.69` (P1) — the relay websocket compiles in Mozilla roots and never reads the OS trust store | A debug build needs the `local-relay-tls` feature to reach `wss://localhost:7001` |
 | `pacto-app-384.67` (P1) — the default user relay list ignores the relay override | The app still reaches production relays from a "local" sandbox |
 
 ## Gates for the orchestrator
@@ -23,7 +23,7 @@ Three findings were filed against `pacto-app`:
 Each step below produced an observable signal. These are the gates the dev-world orchestrator should assert, in order, rather than sleeping.
 
 1. **Stack ready.** Relay answers NIP-11 on `http://localhost:7002`.
-   Do not probe port 7000 on macOS: ControlCenter/AirPlay squats `*:7000`, so `localhost:7000` can answer 403 from the wrong process entirely. The compose file now also publishes the relay plaintext on `127.0.0.1:7002` for exactly this reason.
+   Use 7002, not 7000, for this check: ControlCenter/AirPlay squats `*:7000` on macOS, so `localhost:7000` can answer 403 from the wrong process entirely. 7002 is a host-tooling endpoint — the sandbox itself connects over `wss://localhost:7001`.
 
 2. **Sandbox authenticated.** `sandbox-handle.json` exists in the sandbox root and carries a non-null `npub`.
    With `PACTO_DEV_LOGIN_MNEMONIC` set, the app boots straight past the PIN gate — the first accessibility snapshot showed the authenticated navbar with zero keyboard or click calls.
@@ -32,7 +32,7 @@ Each step below produced an observable signal. These are the gates the dev-world
    ```
    ["REQ","kp",{"kinds":[443],"authors":["<pubkey hex>"],"limit":1}]
    ```
-   Observed tags included `["relays","ws://localhost:7002"]`, confirming the app advertised the local endpoint.
+   The `relays` tag echoes whatever `PACTO_TRUSTED_RELAYS` was set to, which is how you confirm the app advertised the local endpoint rather than a public one.
 
 4. **Keypackage resolvable *by the bot*.** Gate on the bot's own view, not on the relay query above — publication and bot-side resolution are different events. `scripts/create-mls-group.sh` already polls for this and prints `KeyPackage found on relay.`
 
@@ -62,8 +62,10 @@ So the accept call always returns `Welcome not found`. `mls_groups` stays empty,
 
 ## Probe methodology notes
 
-Two artifacts cost time and are worth avoiding when reproducing this.
+Three artifacts cost time and are worth avoiding when reproducing this.
 
 **Use a stable sandbox root.** `make dev-sandbox` mints a new timestamped root on every invocation, so restarting discards the MLS key store along with the keypackage private key. A welcome issued against the previous run's keypackage then fails with `No matching key package was found in the key store` — which looks like a delivery bug and is not one. Set `PACTO_TEST_SANDBOX_ROOT` explicitly instead.
 
 **Relay routing.** The app's gift-wrap subscription runs on the global client pool, which holds the default public relay list and *not* the overridden trusted relay. The probe's welcome was visible only because `bosun` publishes to `wss://jskitty.cat/nostr` as well as the local relay. Until `pacto-app-384.67` lands, a sandbox pointed at the local stack will not see a welcome published solely to that stack — and the sandbox handle will still report only the local endpoint, understating the app's real exposure.
+
+**`mkcert -install` is only half of the TLS fix.** The probe ran with the mkcert CA already in the macOS System keychain, `openssl s_client` reporting `Verify return code: 0 (ok)` and `curl` returning 200 against `https://localhost:7001` — and the app still refused the same endpoint with `invalid peer certificate: UnknownIssuer`. Installing the CA again, or switching between mkcert and `caddy trust`, changes nothing. rustls with `webpki-roots` is a hermetic trust store by design: `tokio-tungstenite` starts from `RootCertStore::empty()` and populates it only from the compiled-in Mozilla list, so `load_native_certs()` is not in the binary and no keychain is ever consulted. Trusting the CA at the OS level is necessary but not sufficient; the debug build also has to carry the `local-relay-tls` feature that adds `rustls-tls-native-roots` alongside the bundled set.

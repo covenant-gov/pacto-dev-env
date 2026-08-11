@@ -3,7 +3,7 @@
   "devRootSeed": "pacto-dev-world/v1 public dev root — sandbox only, never a real account",
   "world": {
     "name": "default",
-    "relayEndpoint": "ws://localhost:7002",
+    "relayEndpoint": "wss://localhost:7001",
     "chain": {
       "endpoint": "http://localhost:8545",
       "chainId": 31337

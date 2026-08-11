@@ -3,11 +3,10 @@ services:
   nostr-relay:
     image: ghcr.io/covenant-gov/pacto-dev-env/nostr-relay:main
     ports:
-      # 7000 is unusable on macOS: ControlCenter (AirPlay) squats *:7000, so
-      # localhost:7000 can resolve to it instead of the relay. 7002 is the
-      # plaintext endpoint dev sandboxes actually use -- pacto-app's relay
-      # websocket bundles Mozilla roots and cannot validate any locally-issued
-      # certificate, so wss://localhost:7001 is unreachable from inside the app.
+      # Sandboxes use wss://localhost:7001 (the Caddy sidecar); 7002 is the
+      # plaintext endpoint for host-side CLI tooling (websocat, nak) only.
+      # It exists because 7000 is unusable on macOS: ControlCenter (AirPlay)
+      # squats *:7000, so localhost:7000 can resolve to it, not the relay.
       - "127.0.0.1:7000:8080"
       - "127.0.0.1:7002:8080"
     volumes:
