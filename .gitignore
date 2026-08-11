@@ -12,3 +12,7 @@ data/cache/
 # explicitly so narrowing the data/ rule cannot expose the sidecar.
 data/world/
 **/world-secrets.json
+
+# Python bytecode — never commit interpreter caches.
+__pycache__/
+*.py[cod]
