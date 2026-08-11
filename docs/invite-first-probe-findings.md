@@ -46,7 +46,7 @@ Each step below produced an observable signal. These are the gates the dev-world
 
 4. **Keypackage resolvable *by the bot*.** Gate on the bot's own view, not on the relay query above — publication and bot-side resolution are different events. `scripts/create-mls-group.sh` already polls for this and prints `KeyPackage found on relay.`
 
-5. **Squad created and invite sent.** `create-mls-group.sh` prints the group wire id and writes `data/deployments/31337/group-<bot>.json`.
+5. **Squad created and invite sent.** `make invite-squad` prints the group wire id, writes `data/deployments/31337/group-<bot>.json`, and publishes the `squad_invite` DM — printing its event id. Both halves matter: the MLS welcome alone leaves the group invisible.
 
 6. **Welcome delivered.** A kind-1059 gift wrap addressed to the sandbox npub appears on the relay.
    Do not treat the event's `created_at` as a delivery time — NIP-59 randomizes it up to two days into the past. The probe's welcome carried a timestamp ~36 hours old and was nonetheless delivered within seconds.
@@ -57,10 +57,11 @@ Each step below produced an observable signal. These are the gates the dev-world
    ```
    `chat_id` equals the group wire id from step 5. This fired live, with no restart, roughly a second after the invite.
 
-8. **Group joined.** `SELECT group_id, name FROM mls_groups;` returns the group, and `resolved_at` on the catch-up row is non-null.
-   Reached by calling `accept_mls_welcome` with the welcome's `id`. Resolve it from `list_pending_mls_welcomes` by matching `nostr_group_id` against the group wire id — never from the catch-up row's `source_event_id`, which is the gift-wrap id and will fail. See below.
+8. **Squad joined and visible.** `SELECT group_id, name FROM mls_groups;` returns the group, `resolved_at` on the catch-up row is non-null, and the squad renders with its default channels.
+   Reached by accepting the invite in the app — DMs → Requests → **Accept**. The orchestrator drives that one click over the MCP bridge; there is deliberately no headless auto-accept, because consent is the point of the invite.
+   Do not shortcut it by calling `accept_mls_welcome` directly: that joins the MLS group but produces no squad, which is the whole trap described below. If you do call it, pass the welcome's `id` from `list_pending_mls_welcomes` (matched on `nostr_group_id`), never the catch-up row's `source_event_id`.
 
-Steps 9 and 10 (post-join history and DM backlog) were not reachable and remain unverified. They must be generated *after* the join regardless: forward secrecy hides pre-join messages from a new member.
+Steps 9 and 10 (post-join history and DM backlog) are now reachable and remain unverified. They must be generated *after* the join regardless: forward secrecy hides pre-join messages from a new member.
 
 ## Why the squad never appears
 
@@ -68,10 +69,22 @@ The join itself is fine. `accept_mls_welcome(welcome.id)` returns `true`, `list_
 
 What fails is one layer up. Squads are built entirely on the frontend from the **DM invite payload**: `finalizeSquadAfterAnnouncementsWelcome` constructs the squad from an invite's name, member list and default channels, and it is only ever called from the DM accept path. `handleMlsWelcomeAccepted` covers the pending-channel case and otherwise returns — its docstring says "attach channel or ignore unattributed welcomes". A bot-created invite carries no DM, so the accepted group is joined at the MLS layer and orphaned at the product layer. Catch up then renders it as a disabled button with an empty label, because it routes welcome entries to a DM invite that does not exist.
 
-Two ways out, and the choice is a product decision rather than a bug fix — auto-materializing a squad from any accepted welcome means anyone who can resolve your KeyPackage can put a squad in your sidebar, whereas today the DM invite is the visible, refusable step:
+Two ways out, and the choice was a product decision rather than a bug fix — auto-materializing a squad from any accepted welcome means anyone who can resolve your KeyPackage can put a squad in your sidebar, whereas today the DM invite is the visible, refusable step:
 
-- **App-side** (`pacto-app-384.70`): surface bare welcomes as an explicit, refusable join.
-- **Orchestrator-side**: have the bot send the real announcements DM invite so the sandbox joins exactly the way a human does. This keeps the dev world on the app's own tested path and removes the dependency entirely — the better default for a conformance harness.
+- **App-side** (`pacto-app-384.70`): surface bare welcomes as an explicit, refusable join. Left open as product work; the trust boundary above is the reason it is not automatic.
+- **Orchestrator-side — chosen and shipped.** `make invite-squad` creates the squad and publishes the real `squad_invite` DM, so the sandbox joins on the app's own tested path. Nothing about app trust behavior changes, which is what a conformance harness wants.
+
+### The invite contract
+
+`parseSquadInviteMessage` (`src/lib/api/nostr.ts`) requires exactly three fields and ignores the rest:
+
+```json
+{ "type": "squad_invite", "squadName": "Barbary Coast", "groupId": "<mls group wire id>" }
+```
+
+Because the bot creates the group before sending the DM, the welcome is already pending when the invite lands, so `acceptAnnouncementsInvite` takes its fast path — resolve the pending welcome, accept it, materialize the squad — and never needs the consent-claim/admitter round trip.
+
+One app-side change was still required, and it is debug-only: a sandbox identity is not backup-verified, and `requireBackupVerified()` silently no-ops **Accept**. `dev_login` now marks it, since a recipe-derived phrase is public by construction and there is nothing to back up.
 
 ### The id trap
 
