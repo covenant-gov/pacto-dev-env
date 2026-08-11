@@ -586,7 +586,7 @@ case_cross_document_app_owner_with_botid() {
   world="$LAST_FIXTURE_WORLD"
   dir="$REPO_ROOT/data/world/$world"
   # Relabel as app-owned while still carrying botId -- exactly the
-  # mislabelled-persona shape U11a exists to reject. Both documents are
+  # mislabelled-persona shape the owner/botId pairing check exists to reject. Both documents are
   # updated so this isolates the owner/botId pairing check from the
   # separate manifest<->sidecar owner-agreement check.
   jq '.personas[0].owner = "app"' "$dir/world-state.json" >"$dir/world-state.json.tmp"
