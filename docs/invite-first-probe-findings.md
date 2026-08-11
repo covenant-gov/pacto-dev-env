@@ -6,17 +6,27 @@ Run 2026-08-11 against the local stack (`nostr-relay` + `pacto-bot-api` from thi
 
 ## Verdict
 
-**Transport works; the join does not complete.** Every step from squad creation through welcome delivery succeeded on the first attempt. The joiner receives the welcome, decrypts it, and surfaces it in the UI as a pending invite. It cannot then join: accepting the invite fails, and the squad never materializes.
+**Transport works; the join completes at the MLS layer but produces no squad.** Every step from squad creation through welcome delivery succeeded on the first attempt. The joiner receives the welcome, decrypts it, and surfaces it as a pending invite. Accepting it succeeds — and the squad still never appears.
 
-No MLS store copy or transfer was used or needed at any point, so the design's exclusion of bundle transfer stands. The blocker is a defect in the app's accept path, not a flaw in the invite-first premise.
+No MLS store copy or transfer was used or needed at any point, so the design's exclusion of bundle transfer stands. **The invite-first premise holds.** What does not hold is the assumption that a joined MLS group is a visible squad.
 
-Three findings were filed against `pacto-app`:
+> **Correction (re-probe, 2026-08-11).** The first pass reported the accept path itself as broken. That was wrong, and the error was in the probe, not the app: it invoked `accept_mls_welcome` by hand with the catch-up entry's `source_event_id`, which is the gift-wrap id. Every real caller passes `welcome.id`. Re-run against a fresh sandbox and a bot-created group, same build:
+>
+> ```text
+> accept_mls_welcome(id      = 137f8b3c…) -> true
+> accept_mls_welcome(wrapper = ac78177c…) -> "Welcome not found"
+> ```
+>
+> After the successful accept, `list_mls_groups` contains the group and pending welcomes drops to zero. `pacto-app-384.68` is closed as not-a-bug; the real defect is `pacto-app-384.70`.
+
+Findings filed against `pacto-app`:
 
 | Finding | Effect on dev-world |
 |---|---|
-| `pacto-app-384.68` (P0) — welcome accept looks up the gift-wrap id in a store keyed by the rumor id | Blocks the welcome-accepted gate outright |
-| `pacto-app-384.69` (P1) — the relay websocket compiles in Mozilla roots and never reads the OS trust store | A debug build needs the `local-relay-tls` feature to reach `wss://localhost:7001` |
-| `pacto-app-384.67` (P1) — the default user relay list ignores the relay override | The app still reaches production relays from a "local" sandbox |
+| `pacto-app-384.70` (P1) — a joined MLS group is invisible unless a DM invite introduced it | The welcome-accepted gate passes, but AE1's "populated squad" does not follow |
+| `pacto-app-384.69` (P1) — the relay websocket compiles in Mozilla roots and never reads the OS trust store | A debug build needs the `local-relay-tls` feature to reach `wss://localhost:7001` — **fixed**, PR #248 |
+| `pacto-app-384.67` (P1) — the default user relay list ignores the relay override | The app still reaches production relays from a "local" sandbox — **fixed**, branch `fix/gate-default-relays-behind-override` |
+| `pacto-app-384.68` (P0) — welcome accept id-space mismatch | **Withdrawn**: probe error, see the correction above |
 
 ## Gates for the orchestrator
 
@@ -48,17 +58,24 @@ Each step below produced an observable signal. These are the gates the dev-world
    `chat_id` equals the group wire id from step 5. This fired live, with no restart, roughly a second after the invite.
 
 8. **Group joined.** `SELECT group_id, name FROM mls_groups;` returns the group, and `resolved_at` on the catch-up row is non-null.
-   **This gate currently never passes** — see below.
+   Reached by calling `accept_mls_welcome` with the welcome's `id`. Resolve it from `list_pending_mls_welcomes` by matching `nostr_group_id` against the group wire id — never from the catch-up row's `source_event_id`, which is the gift-wrap id and will fail. See below.
 
 Steps 9 and 10 (post-join history and DM backlog) were not reachable and remain unverified. They must be generated *after* the join regardless: forward secrecy hides pre-join messages from a new member.
 
-## Why the join fails
+## Why the squad never appears
 
-`catch_up_entries.source_event_id` stores the **gift-wrap** event id. Verified directly: the stored value matched the kind-1059 event id returned by the relay byte for byte.
+The join itself is fine. `accept_mls_welcome(welcome.id)` returns `true`, `list_mls_groups` then contains the group, and pending welcomes drops to zero.
 
-`accept_mls_welcome` passes that id to `engine.get_welcome()`, which in `mdk-core` is keyed by `Welcome.id` — the inner rumor id. `Welcome` carries `id` and `wrapper_event_id` as separate fields, and the app's own accept path reads `wrapper_event_id` separately, which confirms the lookup key is not the wrapper id.
+What fails is one layer up. Squads are built entirely on the frontend from the **DM invite payload**: `finalizeSquadAfterAnnouncementsWelcome` constructs the squad from an invite's name, member list and default channels, and it is only ever called from the DM accept path. `handleMlsWelcomeAccepted` covers the pending-channel case and otherwise returns — its docstring says "attach channel or ignore unattributed welcomes". A bot-created invite carries no DM, so the accepted group is joined at the MLS layer and orphaned at the product layer. Catch up then renders it as a disabled button with an empty label, because it routes welcome entries to a DM invite that does not exist.
 
-So the accept call always returns `Welcome not found`. `mls_groups` stays empty, and because there is no group row to supply a name, the Catch up entry renders as a disabled button showing an ellipsis. Reproduced on two independent runs with fresh identities, with and without a restart.
+Two ways out, and the choice is a product decision rather than a bug fix — auto-materializing a squad from any accepted welcome means anyone who can resolve your KeyPackage can put a squad in your sidebar, whereas today the DM invite is the visible, refusable step:
+
+- **App-side** (`pacto-app-384.70`): surface bare welcomes as an explicit, refusable join.
+- **Orchestrator-side**: have the bot send the real announcements DM invite so the sandbox joins exactly the way a human does. This keeps the dev world on the app's own tested path and removes the dependency entirely — the better default for a conformance harness.
+
+### The id trap
+
+`catch_up_entries.source_event_id` stores the **gift-wrap** id, verified byte for byte against the relay's kind-1059 event. `engine.get_welcome()` is keyed by `Welcome.id`, the inner rumor id; `Welcome` carries both as separate fields. Passing the catch-up row's id to `accept_mls_welcome` therefore returns `Welcome not found`. That is a probe hazard, not an app defect: every real caller passes `welcome.id`.
 
 ## Probe methodology notes
 
@@ -66,6 +83,6 @@ Three artifacts cost time and are worth avoiding when reproducing this.
 
 **Use a stable sandbox root.** *(Fixed upstream — kept here because the symptom is misleading.)* `make dev-sandbox` used to mint a new timestamped root on every invocation, so restarting discarded the MLS key store along with the keypackage private key. A welcome issued against the previous run's keypackage then fails with `No matching key package was found in the key store` — which looks like a delivery bug and is not one. The root is now `test_sandbox/<branch-slug>/<persona>` and stable across runs; `PERSONA=<name>` gives a second identity on the same branch for two-client checks. If you see that error again, something is still handing the app a per-run `PACTO_TEST_SANDBOX_ROOT`.
 
-**Relay routing.** The app's gift-wrap subscription runs on the global client pool, which holds the default public relay list and *not* the overridden trusted relay. The probe's welcome was visible only because `bosun` publishes to `wss://jskitty.cat/nostr` as well as the local relay. Until `pacto-app-384.67` lands, a sandbox pointed at the local stack will not see a welcome published solely to that stack — and the sandbox handle will still report only the local endpoint, understating the app's real exposure.
+**Relay routing.** *(Fixed — `pacto-app-384.67`.)* The app's gift-wrap subscription runs on the global client pool. That pool held the seven public default relays as well as the overridden trusted relay, so a sandbox advertised one local endpoint while holding seven production connections, and the probe's welcome was visible only because `bosun` publishes to `wss://jskitty.cat/nostr` as well as the local relay — the delivery proved nothing about local routing. A set `PACTO_TRUSTED_RELAYS` now suppresses the default list in both the connection set and the relay audit. Re-verify with `get_relays`: it must return exactly the local endpoint.
 
 **`mkcert -install` is only half of the TLS fix.** The probe ran with the mkcert CA already in the macOS System keychain, `openssl s_client` reporting `Verify return code: 0 (ok)` and `curl` returning 200 against `https://localhost:7001` — and the app still refused the same endpoint with `invalid peer certificate: UnknownIssuer`. Installing the CA again, or switching between mkcert and `caddy trust`, changes nothing. rustls with `webpki-roots` is a hermetic trust store by design: `tokio-tungstenite` starts from `RootCertStore::empty()` and populates it only from the compiled-in Mozilla list, so `load_native_certs()` is not in the binary and no keychain is ever consulted. Trusting the CA at the OS level is necessary but not sufficient; the debug build also has to carry the `local-relay-tls` feature that adds `rustls-tls-native-roots` alongside the bundled set.
