@@ -31,7 +31,7 @@ graph TD
 
     subgraph Docker
       direction TB
-      Relay[nostr-relay<br/>ws://localhost:7000<br/>wss://localhost:7001]
+      Relay[nostr-relay<br/>wss://localhost:7001<br/>ws://localhost:7002 tooling]
       Caddy[caddy<br/>wss://localhost:7001]
       Anvil[anvil<br/>http://localhost:8545<br/>https://localhost:8546]
       Daemon[pacto-bot-api<br/>Unix socket in volume]
