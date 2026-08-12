@@ -277,13 +277,14 @@ stop_stale_app() {
   kill -9 "$pid" 2>/dev/null || true
 }
 
-# Upstream bug pacto-app-384.73: on a first boot the app starts its
-# account-wide event stream before any relay is in the pool, fails with "no
-# relays specified", and never re-establishes it. The app then looks healthy --
-# relay connected, "Sync Complete" printed -- while ingesting nothing, so the
-# welcome never arrives and every later gate starves. A restart fixes it,
-# because by then the relay is persisted. Detect that exact line and relaunch
-# once rather than making a developer run this command twice.
+# The app used to start its account-wide event stream before any relay was in
+# the pool, fail with "no relays specified", and never re-establish it. It then
+# looked healthy -- relay connected, "Sync Complete" printed -- while ingesting
+# nothing, so the welcome never arrived and every later gate starved. That is
+# fixed in the app, which now defers such a slice and retries it once relays
+# land, so this line must never appear again. Kept as a canary: a regression
+# fails here, named, instead of surfacing as an unexplained welcome timeout
+# three gates downstream.
 DEAD_STREAM_MARKER='Account-wide relay event stream failed: no relays specified'
 
 launch_app() {
@@ -322,24 +323,16 @@ gate_app_launch() {
   stop_stale_app
 
   local log_file="$SANDBOX_ROOT/dev-world-app.log"
-  local attempt
-  for attempt in 1 2; do
-    launch_app "$log_file"
-    if ! wait_for_app "$log_file"; then
-      gate_fail app-launch \
-        "pacto-app sandbox did not reach readiness within ${PACTO_DEV_WORLD_APP_TIMEOUT:-180}s (waiting for $HANDLE_FILE and a 'Sync Complete' line in $log_file); see $log_file"
-    fi
-    if ! grep -q "$DEAD_STREAM_MARKER" "$log_file" 2>/dev/null; then
-      gate_pass app-launch
-      return
-    fi
-    if [ "$attempt" -eq 1 ]; then
-      warn "the sandbox came up with a dead event stream (pacto-app-384.73); restarting it once"
-      stop_stale_app
-    fi
-  done
-  gate_fail app-launch \
-    "pacto-app sandbox still has a dead event stream after a restart (pacto-app-384.73): '$DEAD_STREAM_MARKER' in $log_file. It would ingest nothing, so later gates would starve."
+  launch_app "$log_file"
+  if ! wait_for_app "$log_file"; then
+    gate_fail app-launch \
+      "pacto-app sandbox did not reach readiness within ${PACTO_DEV_WORLD_APP_TIMEOUT:-180}s (waiting for $HANDLE_FILE and a 'Sync Complete' line in $log_file); see $log_file"
+  fi
+  if grep -q "$DEAD_STREAM_MARKER" "$log_file" 2>/dev/null; then
+    gate_fail app-launch \
+      "pacto-app sandbox came up with a dead event stream: '$DEAD_STREAM_MARKER' in $log_file. It would ingest nothing, so later gates would starve."
+  fi
+  gate_pass app-launch
 }
 
 # ---------------------------------------------------------------------------
@@ -504,30 +497,30 @@ inviter_bot_npub() {
     sed -E 's/.*"(npub1[a-z0-9]+)".*/\1/' | tr -d '[:space:]'
 }
 
-# Gates on the DM backlog actually being readable by the sandbox. `offset` is
-# required by the command, and omitting it makes every call error rather than
-# return nothing -- which reads as "not delivered yet" and burns the whole retry
-# budget on a malformed request.
+# Gates on both halves of the seeded history actually being readable by the
+# sandbox. `offset` is required by the command, and omitting it makes every call
+# error rather than return nothing -- which reads as "not delivered yet" and
+# burns the whole retry budget on a malformed request.
 #
-# Squad history is deliberately NOT gated on retrievability: pacto-app-384.75
-# means a bot's group message can never render in the app. The bot writes every
-# in-MLS rumor as kind 1, and pacto-app renders only kinds 14, 15 and 30078, so
-# the message is stored and ignored. Gating on it here would block the whole
-# world on a defect that lives in neither script.
-dm_backlog_retrievable() {
+# A squad chat is keyed by the group id; a DM chat is keyed by the counterparty.
+# The squad half was previously ungated: the bot wrote in-MLS rumors as kind 1
+# while the app renders 14/15/30078, so a bot's squad message was stored and
+# never displayed. Both sides now agree on kind 14, so this gate holds the app
+# to actually rendering what the bot posted.
+history_retrievable() {
   local bridge_port dm_chat_id js out
   bridge_port="$(read_bridge_port)"
   [ -n "$bridge_port" ] || return 1
   [ -f "$SCRIPT_DIR/app-bridge.mjs" ] || return 1
   dm_chat_id="$(inviter_bot_npub)"
   [ -n "$dm_chat_id" ] || return 1
-  js="(async () => { const invoke = window.__TAURI__.core.invoke; const dm = await invoke('get_chat_messages_paginated', { chatId: '$dm_chat_id', limit: 5, offset: 0 }); return { dm: dm.length }; })()"
+  js="(async () => { const invoke = window.__TAURI__.core.invoke; const squad = await invoke('get_chat_messages_paginated', { chatId: '$SQUAD_GROUP_ID', limit: 5, offset: 0 }); const dm = await invoke('get_chat_messages_paginated', { chatId: '$dm_chat_id', limit: 5, offset: 0 }); return { squad: squad.length, dm: dm.length }; })()"
   out="$(node "$SCRIPT_DIR/app-bridge.mjs" --port "$bridge_port" --eval "$js" 2>/dev/null)" || return 1
-  printf '%s' "$out" | jq -e '(.dm // 0) > 0' >/dev/null 2>&1
+  printf '%s' "$out" | jq -e '(.squad // 0) > 0 and (.dm // 0) > 0' >/dev/null 2>&1
 }
 
 gate_history_visible() {
-  if [ "$(state_get historySent)" = "true" ] && dm_backlog_retrievable; then
+  if [ "$(state_get historySent)" = "true" ] && history_retrievable; then
     gate_pass history-visible
     return
   fi
@@ -550,15 +543,14 @@ gate_history_visible() {
 
   local attempt
   for attempt in $(seq 1 10); do
-    if dm_backlog_retrievable; then
-      warn "squad history was accepted by the bot but cannot render in the app yet (pacto-app-384.75); only the DM backlog is gated"
+    if history_retrievable; then
       gate_pass history-visible
       return
     fi
     sleep 3
   done
   gate_fail history-visible \
-    "the DM backlog was sent but is not retrievable by the sandbox after 10 attempts (~30s); expected a DM chat keyed by '$(inviter_bot_npub)'"
+    "the squad history and DM backlog were sent but are not both retrievable by the sandbox after 10 attempts (~30s); expected a squad chat '$SQUAD_GROUP_ID' and a DM chat keyed by '$(inviter_bot_npub)'"
 }
 
 # ---------------------------------------------------------------------------

@@ -211,11 +211,15 @@ guard_sandbox_root() {
 CANONICAL_SANDBOX_ROOT="$(guard_sandbox_root "$SANDBOX_ROOT_RAW")"
 
 # --- Step 1: release the port-index claim. ---
-# dev-ports.mjs never persists a claim file; it derives an index from the
-# branch hash and confirms it by probing real listening sockets
-# (resolvePortSet -> allPortsFree). The only thing actually "holding" a
-# port claim is the live process bound to it, recorded here as `pid`.
-# Releasing the claim means making sure that process is gone.
+# dev-ports.mjs derives an index from the branch hash, takes an exclusive claim
+# file for it, and confirms it by probing real listening sockets
+# (resolvePortSet -> allPortsFree). Killing the recorded pid is still the whole
+# job here: it frees the sockets immediately, which the probe re-verifies on
+# every future resolution regardless of what any claim file says, so an index
+# can never collide once its process is gone. The claim file itself is not
+# deleted from this side -- it ages out on its own, needing both a dead pid and
+# an expired grace window -- and a re-run of the same branch reclaims its own
+# index straight away.
 release_port_claim() {
   if [ -z "$PID" ]; then
     warn "handle has no live pid recorded; port index ${PORT_INDEX:-unknown} was likely already released"
