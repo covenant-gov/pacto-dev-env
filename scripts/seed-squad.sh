@@ -27,6 +27,10 @@ set -euo pipefail
 #                          the captain/candidate identities automatically
 #   PACTO_SQUAD_CAPTAIN_BOT_ID - bot id to use/create in pacto-bot-api.toml (default: captain)
 #   PACTO_SQUAD_CANDIDATE_BOT_ID - bot id to use/create in pacto-bot-api.toml (default: candidate)
+#   PACTO_LEASE_WAIT     - seconds to wait for the exclusive stack lease
+#                          before failing when a sandbox is running
+#                          (default: 0, fail immediately naming the
+#                          holder; see scripts/lease.sh, U16)
 #
 # Identity resolution:
 #   1. If the required env vars are set, they are used.
@@ -41,6 +45,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=lease.sh
+source "$SCRIPT_DIR/lease.sh"
 
 PACTO_GOV_DIR="${PACTO_GOV_DIR:-$REPO_ROOT/../pacto-gov}"
 if [ ! -d "$PACTO_GOV_DIR" ]; then
@@ -479,6 +487,17 @@ if [ "$FORCE_SEED_SQUAD" != "1" ] && [ -f "$SQUAD_ARTIFACT" ]; then
   echo "Run with FORCE_SEED_SQUAD=1 to re-deploy, or run 'make reset' to clear state."
   exit 0
 fi
+
+# U16c: everything below is the real redeploy (the branch above already
+# exited early when a live artifact exists and a redeploy was not forced).
+# Held exclusively for the whole redeploy so a concurrently running
+# sandbox's shared lease blocks it instead of racing a live squad out from
+# under it; released on any exit via trap, so every 'exit 1' below still
+# releases it.
+SEED_SQUAD_LEASE_ID="$(lease_acquire exclusive "seed-squad.sh ($(whoami)@$(hostname -s 2>/dev/null || hostname))" \
+  --reason "redeploy Nave Pirata squad to Anvil" --wait "${PACTO_LEASE_WAIT:-0}")"
+release_seed_squad_lease() { lease_release "$SEED_SQUAD_LEASE_ID"; }
+trap release_seed_squad_lease EXIT
 
 # For a dev squad we use the deployer address itself as the captain.
 # The PACTO_SQUAD_*_NPUB env vars are required to enforce identity-aware

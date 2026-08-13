@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# U16c: this script's redeploy branch below (the one past the
+# already-live-artifact check) is destructive and lease-guarded -- but the
+# guard is taken by the Makefile's `seed` target, one level up, not here.
+# This script only ever runs inside the one-shot `seed` container started by
+# `docker compose --profile seed run --rm seed` (see docker-compose.yml); a
+# container gets its own PID namespace, so a pid recorded from inside it is
+# meaningless to a host-side liveness check (lease.sh's stale-holder reclaim
+# relies on `kill -0`/`ps -p` against real host pids). The Makefile's host
+# shell blocks synchronously for this container's entire run, so its own pid
+# is a valid, host-meaningful stand-in for "is the redeploy still running".
+
 PACTO_GOV_DIR="${PACTO_GOV_DIR:-/pacto-gov}"
 ANVIL_RPC_URL="${ANVIL_RPC_URL:-http://anvil:8545}"
 ANVIL_PRIVATE_KEY="${ANVIL_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"

@@ -38,6 +38,11 @@ set -euo pipefail
 #                                   debugging run).
 #   PACTO_DEV_WORLD_APP_TIMEOUT  - seconds to wait for app readiness at the
 #                                   app-launch gate (default: 180).
+#   PACTO_DEV_WORLD_LEASE_WAIT   - seconds to wait for the shared stack
+#                                   lease if a destructive operation (e.g.
+#                                   reseed) is holding it exclusively at
+#                                   app-launch (default: 30; see
+#                                   scripts/lease.sh, U16).
 #
 # Idempotence: re-running against an already-populated sandbox re-enters at
 # the first unsatisfied gate rather than duplicating a squad. app-launch
@@ -51,6 +56,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=lease.sh
+source "$SCRIPT_DIR/lease.sh"
 
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -314,9 +323,35 @@ wait_for_app() {
   return 1
 }
 
+# Holds a shared stack lease for exactly as long as the sandbox app process
+# is alive (U16c): the lease's recorded pid is the app's own pid, not this
+# orchestrator script's transient one, so the lease outlives dev-world.sh
+# itself. No explicit release is needed here: once the app exits or is
+# killed, the lease is reclaimed lazily by lease.sh's own stale-pid check
+# (U16b) the next time anyone attempts an exclusive lease, so a crashed
+# sandbox can never wedge a future reseed.
+acquire_sandbox_lease() {
+  local app_pid="$1"
+  if [ -z "$app_pid" ]; then
+    warn "no app pid recorded in $HANDLE_FILE; skipping the shared stack lease"
+    return 0
+  fi
+  local wait_secs="${PACTO_DEV_WORLD_LEASE_WAIT:-30}"
+  if ! lease_acquire shared "dev-world:${BRANCH_SLUG}/${SANDBOX_PERSONA}" \
+    --pid "$app_pid" \
+    --reason "sandbox at $SANDBOX_ROOT (persona $SANDBOX_PERSONA)" \
+    --wait "$wait_secs" >/dev/null; then
+    gate_fail app-launch \
+      "could not take a shared stack lease for the running sandbox (pid $app_pid) after waiting ${wait_secs}s; a destructive operation is holding it exclusively -- see the holder(s) named above"
+  fi
+}
+
 gate_app_launch() {
   if app_already_running; then
-    ok "app already running for $SANDBOX_ROOT (pid $(jq -r '.pid' "$HANDLE_FILE")); reusing it"
+    local existing_pid
+    existing_pid="$(jq -r '.pid' "$HANDLE_FILE")"
+    ok "app already running for $SANDBOX_ROOT (pid $existing_pid); reusing it"
+    acquire_sandbox_lease "$existing_pid"
     gate_pass app-launch
     return
   fi
@@ -332,6 +367,7 @@ gate_app_launch() {
     gate_fail app-launch \
       "pacto-app sandbox came up with a dead event stream: '$DEAD_STREAM_MARKER' in $log_file. It would ingest nothing, so later gates would starve."
   fi
+  acquire_sandbox_lease "$(jq -r '.pid // empty' "$HANDLE_FILE" 2>/dev/null)"
   gate_pass app-launch
 }
 

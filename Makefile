@@ -8,7 +8,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group invite-squad build-pacto-bot-api publish-key-package check-group pacto-connect tailscale-serve-up tailscale-serve-down tailscale-serve-status world-manifest check-world-manifest test-world world-env dev-world dev-world-reclaim
+.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group invite-squad build-pacto-bot-api publish-key-package check-group pacto-connect tailscale-serve-up tailscale-serve-down tailscale-serve-status world-manifest check-world-manifest test-world test-lease world-env dev-world dev-world-reclaim
 
 pacto-connect: ## Print Pacto connection instructions using wss/https endpoints
 	@./scripts/pacto-connect.sh
@@ -37,8 +37,17 @@ ensure-sibling-repos: ## Ensure required sibling repositories (e.g. pacto-gov) a
 up-all: config certs ensure-sibling-repos ## Start the full stack (default + aztec + bunker + seed)
 	docker compose --profile full up -d --build
 
+# The redeploy this triggers (scripts/seed-anvil.sh, inside the one-shot
+# `seed` container) is destructive to a running sandbox's on-chain state, so
+# it is exclusive-lease-guarded here rather than inside that script: a
+# container has its own PID namespace, so only this host-side shell -- which
+# blocks for the container's whole run -- has a pid the lease's stale-holder
+# reclaim can meaningfully check (see scripts/lease.sh and
+# scripts/seed-anvil.sh, U16).
 seed: ensure-sibling-repos ## Deploy Pacto governance contracts to Anvil (one-shot)
-	HOST_UID=$$(id -u) HOST_GID=$$(id -g) docker compose --profile seed run --rm seed
+	@./scripts/lease.sh run exclusive "make seed ($$(whoami)@$$(hostname -s 2>/dev/null || hostname))" \
+		--reason "deploy Pacto governance contracts to Anvil" --wait "$${PACTO_LEASE_WAIT:-0}" -- \
+		env HOST_UID="$$(id -u)" HOST_GID="$$(id -g)" docker compose --profile seed run --rm seed
 
 seed-squad: ## Deploy a Nave Pirata squad to Anvil (identities + on-chain crew bootstrap)
 	@./scripts/seed-squad.sh
@@ -88,9 +97,13 @@ build-anvil: ## Build the local Anvil/Foundry image
 	docker compose build anvil
 
 reset: ## Stop all services, remove containers/volumes, and clear local deployment artifacts
-	docker compose --profile full --profile aztec --profile bunker --profile seed --profile debug down -v --remove-orphans
-	rm -rf ./data 2>/dev/null || docker run --rm -v "$(CURDIR):/host" --workdir /host alpine:latest rm -rf ./data
-	rm -rf ../pacto-gov/deployments/31337 2>/dev/null || true
+	@./scripts/lease.sh run exclusive "make reset ($$(whoami)@$$(hostname -s 2>/dev/null || hostname))" \
+		--reason "stop stack, wipe docker volumes and ./data" --wait "$${PACTO_LEASE_WAIT:-0}" -- \
+		bash -c '\
+			docker compose --profile full --profile aztec --profile bunker --profile seed --profile debug down -v --remove-orphans && \
+			(rm -rf ./data 2>/dev/null || docker run --rm -v "$(CURDIR):/host" --workdir /host alpine:latest rm -rf ./data) && \
+			(rm -rf ../pacto-gov/deployments/31337 2>/dev/null || true) \
+		'
 
 logs: ## Follow logs for all running services
 	docker compose logs -f
@@ -135,6 +148,9 @@ check-world-manifest: ## Validate a generated world manifest and sidecar against
 test-world: ## Run the world manifest and identity derivation test suite
 	@./test/world-derivation.test.sh
 	@./test/world-schema.test.sh
+
+test-lease: ## Run the shared/exclusive stack-lease test suite (no Docker required)
+	@./test/lease.test.sh
 
 world-env: ## Print export lines for local-chain contract addresses from the deployment artifact
 	@./scripts/world-env.sh
