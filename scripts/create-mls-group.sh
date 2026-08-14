@@ -89,7 +89,7 @@ docker_compose() {
   docker compose -f "$REPO_ROOT/docker-compose.yml" "$@"
 }
 
-if ! docker compose ps pacto-bot-api --status running | grep -q "pacto-bot-api"; then
+if ! docker_compose ps pacto-bot-api --status running | grep -q "pacto-bot-api"; then
   err "pacto-bot-api container is not running. Run 'make up' first."
   exit 1
 fi
