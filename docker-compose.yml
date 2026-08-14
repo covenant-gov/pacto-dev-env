@@ -1,3 +1,8 @@
+# Pin the Compose project name to the repo, not the invoking directory: Compose
+# otherwise derives it from the cwd basename, which breaks under git worktrees
+# (e.g. this checked out at "stack-lease") and any non-default clone dir name.
+name: pacto-dev-env
+
 services:
   # Nostr relay for local DM / MLS testing
   nostr-relay:

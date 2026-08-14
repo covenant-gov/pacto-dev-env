@@ -8,7 +8,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group invite-squad build-pacto-bot-api publish-key-package check-group pacto-connect tailscale-serve-up tailscale-serve-down tailscale-serve-status world-manifest check-world-manifest test-world test-lease world-env dev-world dev-world-reclaim
+.PHONY: help up up-all down seed seed-squad reseed reseed-all pull build-anvil reset logs check check-env config ensure-sibling-repos dev verify-squad create-mls-group invite-squad build-pacto-bot-api publish-key-package check-group pacto-connect tailscale-serve-up tailscale-serve-down tailscale-serve-status world-manifest check-world-manifest test-world test-lease test-compose world-env dev-world dev-world-reclaim
 
 pacto-connect: ## Print Pacto connection instructions using wss/https endpoints
 	@./scripts/pacto-connect.sh
@@ -151,6 +151,9 @@ test-world: ## Run the world manifest and identity derivation test suite
 
 test-lease: ## Run the shared/exclusive stack-lease test suite (no Docker required)
 	@./test/lease.test.sh
+
+test-compose: ## Verify the Compose project name is pinned and stable across invoking directories
+	@./test/compose-project.test.sh
 
 world-env: ## Print export lines for local-chain contract addresses from the deployment artifact
 	@./scripts/world-env.sh
