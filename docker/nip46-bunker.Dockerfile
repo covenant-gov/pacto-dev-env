@@ -1,6 +1,9 @@
 # Minimal NIP-46 bunker for local bot development.
 # Builds only the Bunker46 server (no web UI) from source on GitHub.
-FROM node:24-slim AS base
+# Base digest verified via `crane digest` (multi-arch index) on 2026-11-07.
+# BUNKER46_GIT_SHA pinned to dsbaars/bunker46 main tip verified 2026-11-07
+# (repo has no release tags). Refresh intentionally when upgrading bunker46.
+FROM node:24-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS base
 RUN apt-get update -y \
     && apt-get install -y --no-install-recommends openssl ca-certificates git \
     && rm -rf /var/lib/apt/lists/* \
@@ -9,8 +12,11 @@ RUN apt-get update -y \
 WORKDIR /app
 
 FROM base AS deps
-ARG BUNKER46_REF=main
-RUN git clone --depth 1 --branch "${BUNKER46_REF}" https://github.com/dsbaars/bunker46.git /src \
+ARG BUNKER46_GIT_SHA=36a3386b12b306016a07dfc1a44fbeb1e2be0cb1
+RUN git init /src \
+    && git -C /src remote add origin https://github.com/dsbaars/bunker46.git \
+    && git -C /src fetch --depth 1 origin "${BUNKER46_GIT_SHA}" \
+    && git -C /src checkout --force FETCH_HEAD \
     && mkdir -p /app/apps/server /app/packages/tsconfig /app/packages/eslint-config /app/packages/shared-types /app/packages/config \
     && cp -r /src/pnpm-lock.yaml /src/pnpm-workspace.yaml /src/package.json /src/.npmrc /app/ \
     && cp -r /src/apps/server/package.json /app/apps/server/package.json \
@@ -22,6 +28,9 @@ RUN git clone --depth 1 --branch "${BUNKER46_REF}" https://github.com/dsbaars/bu
     && cp /src/apps/server/prisma.config.ts /app/apps/server/prisma.config.ts
 WORKDIR /app
 ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
+# Lifecycle scripts stay enabled: argon2 and related native deps need them.
+# Root prepare (husky) is irrelevant in this filtered install; prisma generate
+# is still run explicitly in the build stage below.
 RUN pnpm install --frozen-lockfile --filter @bunker46/server...
 
 FROM base AS build

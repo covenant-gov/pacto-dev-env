@@ -40,7 +40,8 @@ services:
   # skip verification or run scripts/generate-local-certs.sh to switch to a
   # locally-trusted mkcert certificate.
   caddy:
-    image: caddy:2-alpine
+    # Digest verified via `crane digest` (multi-arch index) on 2026-11-07.
+    image: caddy:2-alpine@sha256:78bd35025c7ba85961dd149ae670315129954e77abe2383ac47c89106b35ade9
     container_name: pacto-caddy
     ports:
       - "127.0.0.1:7001:8443"

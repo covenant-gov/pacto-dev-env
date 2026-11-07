@@ -192,17 +192,27 @@ install_websocat() {
   fi
 
   log "Installing websocat from GitHub release..."
-  local asset
+  local asset checksum
   case "$(uname -m)" in
-    x86_64) asset="websocat.x86_64-unknown-linux-musl" ;;
-    aarch64|arm64) asset="websocat_max.aarch64-unknown-linux-musl" ;;
+    x86_64)
+      asset="websocat.x86_64-unknown-linux-musl"
+      checksum="33a80fcbf2313e3c6e816ddafec333c1a04cc34464d4ba4970d938275775a12f"
+      ;;
+    aarch64|arm64)
+      asset="websocat_max.aarch64-unknown-linux-musl"
+      checksum="7b554537b7b046caf598a0db4ee95016e4d2899595c71a403d73ff5ad9f0cbed"
+      ;;
     *) err "Unsupported architecture: $(uname -m)"; return 1 ;;
   esac
   local version="1.14.0"
   local dest="$HOME/.cargo/bin/websocat"
+  local tmpfile
+  tmpfile="$(mktemp)"
   mkdir -p "$HOME/.cargo/bin"
-  curl -fsSL "https://github.com/vi/websocat/releases/download/v${version}/${asset}" -o "$dest"
-  chmod +x "$dest"
+  curl -fsSL "https://github.com/vi/websocat/releases/download/v${version}/${asset}" -o "$tmpfile"
+  echo "${checksum}  ${tmpfile}" | sha256sum -c - >/dev/null
+  install -m 0755 "$tmpfile" "$dest"
+  rm -f "$tmpfile"
   log "websocat installed: $("$dest" --version | head -1)"
 }
 
@@ -266,9 +276,10 @@ install_pnpm() {
 
   # Corepack needs to write to /usr/bin when Node.js is installed via Debian
   # packages, so run it through sudo only when not root.
-  log "Enabling pnpm via Corepack..."
+  # Pin matches docker/nip46-bunker.Dockerfile and bunker46 packageManager.
+  log "Enabling pnpm via Corepack (pnpm@10.10.0)..."
   run_privileged corepack enable
-  run_privileged corepack prepare pnpm@latest --activate
+  run_privileged corepack prepare pnpm@10.10.0 --activate
 }
 
 # ---------------------------------------------------------------------------

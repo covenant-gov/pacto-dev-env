@@ -1,4 +1,5 @@
-FROM ubuntu:26.04
+# Digest verified via `crane digest` (multi-arch index) on 2026-11-07.
+FROM ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
 
 ENV DEBIAN_FRONTEND=noninteractive
 

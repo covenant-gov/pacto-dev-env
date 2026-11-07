@@ -1,7 +1,8 @@
 # pacto-debug
 # Sidecar container with network/WebSocket debugging tools.
 # Start with: docker compose --profile debug up -d --build
-FROM debian:bookworm-slim
+# Base digest verified via `crane digest` (multi-arch index) on 2026-11-07.
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -19,12 +20,13 @@ RUN apt-get update \
 ARG WEBSOCAT_VERSION=1.14.0
 ARG TARGETARCH
 RUN case "${TARGETARCH}" in \
-        amd64) asset="websocat.x86_64-unknown-linux-musl" ;; \
-        arm64) asset="websocat_max.aarch64-unknown-linux-musl" ;; \
+        amd64) asset="websocat.x86_64-unknown-linux-musl"; checksum="33a80fcbf2313e3c6e816ddafec333c1a04cc34464d4ba4970d938275775a12f" ;; \
+        arm64) asset="websocat_max.aarch64-unknown-linux-musl"; checksum="7b554537b7b046caf598a0db4ee95016e4d2899595c71a403d73ff5ad9f0cbed" ;; \
         *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && curl -fsSL "https://github.com/vi/websocat/releases/download/v${WEBSOCAT_VERSION}/${asset}" \
         -o /usr/local/bin/websocat \
+    && echo "${checksum}  /usr/local/bin/websocat" | sha256sum -c - \
     && chmod +x /usr/local/bin/websocat
 
 ARG NAK_VERSION=0.20.0
