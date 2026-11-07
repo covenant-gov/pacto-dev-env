@@ -4,7 +4,8 @@
 # - Keeps the upstream multi-arch layer intact
 # - Adds curl (for healthchecks)
 # - Uses a stable ENTRYPOINT so Compose can append subcommands naturally
-ARG AZTEC_IMAGE=aztecprotocol/aztec:5.0.0-nightly.20260625
+# Upstream digest verified via `crane digest` (multi-arch index) on 2026-11-07.
+ARG AZTEC_IMAGE=aztecprotocol/aztec:5.0.0-nightly.20260625@sha256:25033990e0adc0f92e32958016ffb81e866ddb852a52e52a6a0d10912c0df985
 FROM ${AZTEC_IMAGE}
 
 # Silence the harmless x86_64 tcmalloc LD_PRELOAD warning on arm64

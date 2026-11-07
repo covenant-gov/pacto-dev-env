@@ -70,7 +70,7 @@ Pacto uses pnpm. Node 24 is recommended:
 
 ```bash
 corepack enable
-corepack prepare pnpm@latest --activate
+corepack prepare pnpm@10.10.0 --activate
 pnpm --version
 ```
 
